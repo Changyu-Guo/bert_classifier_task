@@ -84,7 +84,7 @@ def train(
         num_labels,
         shuffle=True,
         repeat=True,
-        batch_size=2
+        batch_size=batch_size
     )
 
     model.fit(
@@ -121,7 +121,7 @@ def get_params():
     total_features = desc['total_features']
     return dict(
         distribution_strategy='one_device',
-        epochs=100,
+        epochs=2,
         num_labels=num_labels,
         max_seq_len=max_seq_len,
         total_features=total_features,
