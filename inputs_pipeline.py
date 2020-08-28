@@ -34,12 +34,7 @@ def read_and_batch_from_tfrecord(
         segment_ids = parsed_example['segment_ids']
         label_ids = parsed_example['label_ids']
 
-        return {
-            'inputs_ids': inputs_ids,
-            'inputs_mask': inputs_mask,
-            'segment_ids': segment_ids,
-            'label_ids': label_ids
-        }
+        return (inputs_ids, inputs_mask, segment_ids), label_ids
 
     dataset = dataset.map(
         _parse_example, num_parallel_calls=tf.data.experimental.AUTOTUNE

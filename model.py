@@ -1,5 +1,6 @@
 # -*- coding: utf - 8 -*-
 
+import numpy as np
 import tensorflow as tf
 from transformers import TFBertModel, BertConfig
 from optimization import create_optimizer
@@ -18,9 +19,9 @@ def create_model(num_labels, is_train):
     segment_ids = tf.keras.Input((None,), name='segment_ids', dtype=tf.int64)
     label_ids = tf.keras.Input([num_labels], name='label_ids', dtype=tf.int64)
 
-    bert_config = BertConfig.from_json_file('./bert-base-chinese-config.json')
-    # pretrained_bert_model = TFBertModel.from_pretrained('bert-base-chinese')
-    pretrained_bert_model = TFBertModel(bert_config)
+    # bert_config = BertConfig.from_json_file('./bert-base-chinese-config.json')
+    # un_pretrained_bert_model = TFBertModel(bert_config)
+    pretrained_bert_model = TFBertModel.from_pretrained('bert-base-chinese')
 
     bert_output = pretrained_bert_model([inputs_ids, inputs_mask, segment_ids])
 
@@ -30,20 +31,12 @@ def create_model(num_labels, is_train):
         pooled_output = tf.nn.dropout(pooled_output, rate=0.1)
 
     # (batch_size, num_labels)
-    labels_dense = tf.keras.layers.Dense(num_labels, name='sigmoid_output')
+    pred = tf.keras.layers.Dense(num_labels, activation='sigmoid')(pooled_output)
 
-    # (batch_size, num_labels)
-    pred = labels_dense(pooled_output)
-
-    model = tf.keras.Model(inputs={
-        'inputs_ids': inputs_ids,
-        'inputs_mask': inputs_mask,
-        'segment_ids': segment_ids,
-        'label_ids': label_ids
-    }, outputs=pred)
-    label_ids = tf.cast(label_ids, tf.float32)
-    loss = tf.nn.sigmoid_cross_entropy_with_logits(label_ids, pred)
-    model.add_loss(loss)
+    model = tf.keras.Model(
+        inputs=[inputs_ids, inputs_mask, segment_ids, label_ids],
+        outputs=pred
+    )
     return model
 
 
@@ -76,7 +69,11 @@ def train(
             checkpoint.restore(latest_checkpoint)
             logging.info('Load checkpoint {} from {}'.format(latest_checkpoint, model_dir))
 
-        model.compile(optimizer)
+        model.compile(
+            optimizer,
+            loss=tf.keras.losses.BinaryCrossentropy(from_logits=False),
+            metrics=['binary_accuracy']
+        )
 
     train_dataset = read_and_batch_from_tfrecord(
         data_path,
@@ -89,7 +86,6 @@ def train(
 
     model.fit(
         x=train_dataset,
-        y=None,
         initial_epoch=0,
         epochs=epochs,
         steps_per_epoch=steps_per_epoch,
@@ -137,7 +133,16 @@ def predict(
         batch_size=batch_size
     )
 
-    model.predict(train_dataset)
+    for data in train_dataset:
+        ret = model.predict(data)
+
+        ret = tf.nn.sigmoid(ret)
+
+        ret = tf.where(ret < 0.5, 0, 1)
+
+        print(np.nonzero(ret[0]))
+
+        break
 
 
 def _create_optimizer(num_train_steps):
@@ -162,7 +167,7 @@ def get_params():
         num_labels=num_labels,
         max_seq_len=max_seq_len,
         total_features=total_features,
-        batch_size=4,
+        batch_size=32,
         model_dir='./saved_models',
         data_path='./datasets/init_train.tfrecord'
     )
