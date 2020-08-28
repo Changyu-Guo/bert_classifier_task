@@ -9,14 +9,64 @@ import collections
 import tensorflow as tf
 from tokenizers import BertWordPieceTokenizer
 from utils import *
-from inputs_pipeline import *
 
-init_train_table_txt_path = 'D:\\projects\\2020_08_27_bert_classifier_task\\datasets\\init-train-table.txt'
-init_train_txt_path = 'D:\\projects\\2020_08_27_bert_classifier_task\\datasets\\init-train.txt'
+init_train_table_txt_path = './datasets/init-train-table.txt'
+init_train_txt_path = './datasets/init-train.txt'
 tfrecord_save_path = './datasets/init_train.tfrecord'
-vocab_filepath = 'D:\\projects\\2020_08_27_bert_classifier_task\\tokenizations\\vocab.txt'
+desc_json_save_path = './datasets/desc.json'
+vocab_filepath = './vocab.txt'
 
-MAX_SEQ_LEN = 128
+MAX_SEQ_LEN = 200
+
+
+class Example:
+    def __init__(self, text, relations):
+        self.text = text
+        self.relations = relations
+
+
+class Feature:
+    def __init__(self, inputs_ids, inputs_mask, segment_ids, label_ids):
+        self.inputs_ids = inputs_ids
+        self.inputs_mask = inputs_mask
+        self.segment_ids = segment_ids
+        self.label_ids = label_ids
+
+
+class FeaturesWriter:
+    def __init__(self, filename):
+        self.filename = filename
+        if tf.io.gfile.exists(filename):
+            tf.io.gfile.remove(filename)
+        self._writer = tf.io.TFRecordWriter(filename)
+        self.total_features = 0
+
+    def process_feature(self, feature):
+
+        def create_int_feature(values):
+            feat = tf.train.Feature(int64_list=tf.train.Int64List(value=list(values)))
+            return feat
+
+        features = collections.OrderedDict()
+        features['inputs_ids'] = create_int_feature(feature.inputs_ids)
+        features['inputs_mask'] = create_int_feature(feature.inputs_mask)
+        features['segment_ids'] = create_int_feature(feature.segment_ids)
+        features['label_ids'] = create_int_feature(feature.label_ids)
+
+        example = tf.train.Example(features=tf.train.Features(feature=features))
+        self._writer.write(example.SerializeToString())
+
+        self.total_features += 1
+
+    def save_desc(self, save_filename, **kwargs):
+        kwargs['total_features'] = self.total_features
+        with tf.io.gfile.GFile(save_filename, mode='w') as writer:
+            j = json.dumps(kwargs, indent=2, ensure_ascii=False)
+            writer.write(j)
+        writer.close()
+
+    def close(self):
+        self._writer.close()
 
 
 def load_init_train_table_txt(filepath=init_train_table_txt_path):
@@ -69,15 +119,24 @@ def extract_examples_from_init_train():
     return examples
 
 
-def convert_examples_to_features(examples, labels, save_path, max_seq_len):
-    tokenizer = BertWordPieceTokenizer(vocab_file=vocab_filepath)
+def convert_examples_to_features(
+        examples, vocab_file_path, labels,
+        max_seq_len, save_path, desc_save_path=None
+):
+    tokenizer = BertWordPieceTokenizer(vocab_file=vocab_file_path)
+
+    # pad
     tokenizer.enable_padding(
         direction='right',
         length=max_seq_len
     )
+
+    # trunc
     tokenizer.enable_truncation(max_seq_len)
+
     label_to_id_map = get_label_to_id_map(labels)
-    labels_len = len(labels)
+
+    num_labels = len(labels)
     tfrecord_writer = FeaturesWriter(save_path)
     for example in examples:
         text = example.text
@@ -88,9 +147,16 @@ def convert_examples_to_features(examples, labels, save_path, max_seq_len):
             inputs_ids=tokenizer_outputs.ids,
             inputs_mask=tokenizer_outputs.attention_mask,
             segment_ids=tokenizer_outputs.type_ids,
-            label_ids=ids_to_vector(text_labels_ids, labels_len)
+            label_ids=ids_to_vector(text_labels_ids, num_labels)
         )
         tfrecord_writer.process_feature(feature)
+
+    if desc_save_path is not None:
+        kwargs = dict(
+            num_labels=num_labels,
+            max_seq_len=max_seq_len
+        )
+        tfrecord_writer.save_desc(desc_save_path, **kwargs)
 
 
 def generate_tfrecord():
@@ -98,9 +164,11 @@ def generate_tfrecord():
     examples = extract_examples_from_init_train()
     convert_examples_to_features(
         examples,
+        vocab_filepath,
         relations,
+        MAX_SEQ_LEN,
         tfrecord_save_path,
-        MAX_SEQ_LEN
+        desc_json_save_path
     )
 
 

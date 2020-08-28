@@ -3,7 +3,7 @@
   <component name="ProjectPlainTextFileTypeManager">
     <file url="file://$PROJECT_DIR$/datasets/init-train-table.txt" />
     <file url="file://$PROJECT_DIR$/datasets/init-train.txt" />
-    <file url="file://$PROJECT_DIR$/tokenizations/vocab.txt" />
+    <file url="file://$PROJECT_DIR$/vocab.txt" />
   </component>
   <component name="ProjectRootManager" version="2" project-jdk-name="Python 3.6" project-jdk-type="Python SDK" />
 </project>
