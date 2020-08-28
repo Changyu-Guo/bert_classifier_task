@@ -92,7 +92,7 @@ def train(
         y=None,
         initial_epoch=0,
         epochs=epochs,
-        steps_per_epoch=steps_per_epoch,
+        steps_per_epoch=10,
         verbose=1
     )
 
