@@ -92,7 +92,7 @@ def train(
         y=None,
         initial_epoch=0,
         epochs=epochs,
-        steps_per_epoch=10,
+        steps_per_epoch=steps_per_epoch,
         verbose=1
     )
 
@@ -121,7 +121,7 @@ def get_params():
     total_features = desc['total_features']
     return dict(
         distribution_strategy='one_device',
-        epochs=2,
+        epochs=100,
         num_labels=num_labels,
         max_seq_len=max_seq_len,
         total_features=total_features,
