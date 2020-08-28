@@ -9,6 +9,7 @@ import collections
 import tensorflow as tf
 from tokenizers import BertWordPieceTokenizer
 from utils import *
+from model import create_model, _create_optimizer
 
 init_train_table_txt_path = './datasets/init-train-table.txt'
 init_train_txt_path = './datasets/init-train.txt'
@@ -172,5 +173,40 @@ def generate_tfrecord():
     )
 
 
+def inference():
+    _, relations, _, _ = extract_relations_from_init_train_table()
+    relation_to_id_map = get_label_to_id_map(relations)
+    id_to_relation_map = relations
+
+    model = create_model(num_labels=len(relations), is_train=False)
+    optimizer = _create_optimizer(num_train_steps=100)
+    tokenizer = BertWordPieceTokenizer('./vocab.txt')
+
+    checkpoint = tf.train.Checkpoint(model=model, optimizer=optimizer)
+
+    checkpoint.restore(tf.train.latest_checkpoint('./saved_models'))
+
+    examples = extract_examples_from_init_train()
+
+    for example in examples:
+        text = example.text
+        relations = example.relations
+
+        tokenizer_outputs = tokenizer.encode(text)
+        inputs_ids = tokenizer_outputs.ids
+        inputs_mask = tokenizer_outputs.attention_mask
+        segment_ids = tokenizer_outputs.type_ids
+
+        inputs_ids = tf.constant(inputs_ids, dtype=tf.int64)
+        inputs_mask = tf.constant(inputs_mask, dtype=tf.int64)
+        segment_ids = tf.constant(segment_ids, dtype=tf.int64)
+
+        pred = model.predict([inputs_ids, inputs_mask, segment_ids])
+
+        print(pred.shape)
+
+        break
+
+
 if __name__ == '__main__':
-    generate_tfrecord()
+    inference()

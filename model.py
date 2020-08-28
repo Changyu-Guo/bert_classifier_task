@@ -23,7 +23,8 @@ def create_model(num_labels, is_train):
     # un_pretrained_bert_model = TFBertModel(bert_config)
     pretrained_bert_model = TFBertModel.from_pretrained('bert-base-chinese')
 
-    bert_output = pretrained_bert_model([inputs_ids, inputs_mask, segment_ids])
+    # bert_output = un_pretrained_bert_model([inputs_ids, inputs_mask, segment_ids], training=is_train)
+    bert_output = pretrained_bert_model([inputs_ids, inputs_mask, segment_ids], training=is_train)
 
     # (batch_size, hidden_size)
     pooled_output = bert_output[1]
@@ -135,12 +136,8 @@ def predict(
 
     for data in train_dataset:
         ret = model.predict(data)
-
-        ret = tf.nn.sigmoid(ret)
-
-        ret = tf.where(ret < 0.5, 0, 1)
-
-        print(np.nonzero(ret[0]))
+        ret = tf.where(ret > 0.5, 1, 0)
+        print(ret)
 
         break
 
