@@ -19,7 +19,6 @@ from __future__ import print_function
 
 import re
 
-import gin
 import tensorflow as tf
 import tensorflow_addons.optimizers as tfa_optimizers
 from absl import logging
@@ -67,7 +66,6 @@ class WarmUp(tf.keras.optimizers.schedules.LearningRateSchedule):
         }
 
 
-@gin.configurable
 def create_optimizer(init_lr,
                      num_train_steps,
                      num_warmup_steps,
