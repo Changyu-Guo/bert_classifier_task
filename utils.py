@@ -19,8 +19,8 @@ def labels_to_ids(label_to_id_map, labels):
     return [label_to_id_map[label] for label in labels]
 
 
-def ids_to_vector(ids, len):
-    zeros = [0] * len
+def ids_to_vector(ids, _len):
+    zeros = [0] * _len
     for _id in ids:
         zeros[_id] = 1
     return zeros

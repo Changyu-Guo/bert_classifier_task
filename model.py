@@ -1,8 +1,8 @@
 # -*- coding: utf - 8 -*-
 
 import tensorflow as tf
-from transformers import TFBertModel
-from transformers import create_optimizer
+from transformers import TFBertModel, BertConfig
+from optimization import create_optimizer
 from absl import logging
 from utils import get_distribution_strategy, get_strategy_scope
 from inputs_pipeline import read_and_batch_from_tfrecord
@@ -14,9 +14,11 @@ def create_model(num_labels, is_train):
     inputs_ids = tf.keras.Input((None,), name='inputs_ids', dtype=tf.int64)
     inputs_mask = tf.keras.Input((None,), name='inputs_mask', dtype=tf.int64)
     segment_ids = tf.keras.Input((None,), name='segment_ids', dtype=tf.int64)
-    label_ids = tf.keras.Input((None,), name='label_ids', dtype=tf.int64)
+    label_ids = tf.keras.Input((None,), batch_size=None, name='label_ids', dtype=tf.int64)
 
-    pretrained_bert_model = TFBertModel.from_pretrained('bert-base-chinese')
+    bert_config = BertConfig.from_json_file('./bert-base-chinese-config.json')
+    # pretrained_bert_model = TFBertModel.from_pretrained('bert-base-chinese')
+    pretrained_bert_model = TFBertModel(bert_config)
 
     bert_output = pretrained_bert_model([inputs_ids, inputs_mask, segment_ids])
 
@@ -32,29 +34,29 @@ def create_model(num_labels, is_train):
         'inputs_mask': inputs_mask,
         'segment_ids': segment_ids,
         'label_ids': label_ids
-    })
-    loss = tf.nn.sigmoid_cross_entropy_with_logits(label_ids, logits)
+    }, outputs=logits)
+    loss = tf.keras.losses.binary_crossentropy(label_ids, logits, from_logits=False)
     model.add_loss(loss)
-    model.add_metric('accuracy')
+    # metric = tf.keras.metrics.binary_accuracy(tf.transpose(label_ids), logits, threshold=0.5)
+    # model.add_metric(metric)
     return model
 
 
 def train(
-        distribution_strategy='mirror',
-        num_labels=53,
-        max_seq_len=128,
-        num_train_steps=100000,
-        steps_between_eval=10000,
-        model_dir='',
-        data_path=''
+        distribution_strategy,
+        num_labels,
+        max_seq_len,
+        num_train_steps,
+        batch_size,
+        model_dir,
+        data_path
 ):
+    if not tf.io.gfile.exists(model_dir):
+        tf.io.gfile.makedirs(model_dir)
     distribution_strategy = get_distribution_strategy(distribution_strategy, num_gpus=1)
     with get_strategy_scope(distribution_strategy):
         model = create_model(num_labels, is_train=True)
         optimizer = _create_optimizer(num_train_steps)
-
-        cur_step = 0
-
         checkpoint = tf.train.Checkpoint(
             model=model,
             optimizer=optimizer
@@ -63,7 +65,6 @@ def train(
         if latest_checkpoint:
             checkpoint.restore(latest_checkpoint)
             logging.info('Load checkpoint {} from {}'.format(latest_checkpoint, model_dir))
-            cur_step = optimizer.iterations.numpy()
 
         model.compile(optimizer)
 
@@ -78,31 +79,26 @@ def train(
 
     callbacks = _create_callback()
 
-    while cur_step < num_train_steps:
-        remaining_steps = num_train_steps - cur_step
-        train_steps_per_eval = remaining_steps if remaining_steps < steps_between_eval else steps_between_eval
-        cur_iteration = cur_step // steps_between_eval
+    model.fit(
+        x=train_dataset,
+        y=None,
+        batch_size=batch_size,
+        initial_epoch=0,
+        steps_per_epoch=num_train_steps,
+        callbacks=callbacks,
+        verbose=1
+    )
 
-        his = model.fit(
-            train_dataset,
-            initial_epoch=cur_iteration,
-            steps_per_epoch=train_steps_per_eval,
-            callbacks=callbacks,
-            verbose=1
-        )
-
-        cur_step += train_steps_per_eval
+    checkpoint.save('./saved_models/cls_bert_checkpoint')
 
 
 def _create_optimizer(num_train_steps):
-    optimizer, _ = create_optimizer(
+    optimizer = create_optimizer(
         init_lr=1e-4,
         num_train_steps=num_train_steps,
         num_warmup_steps=int(num_train_steps // 10),
-        min_lr_ratio=0.0,
-        adam_epsilon=1e-6,
-        weight_decay_rate=0.1,
-        include_in_weight_decay=None
+        end_lr=0.0,
+        optimizer_type='adamw'
     )
     return optimizer
 
@@ -111,17 +107,17 @@ def _create_callback():
     return []
 
 
-def params():
+def get_params():
     return dict(
-        distribution_strategy='mirrored',
-        num_train_steps=1000,
-        steps_between_eval=100,
+        distribution_strategy='one_device',
+        num_train_steps=20,
         max_seq_len=128,
         num_labels=53,
+        batch_size=2,
         model_dir='./saved_models',
         data_path='./datasets/init_train.tfrecord'
     )
 
 
 if __name__ == '__main__':
-    train(params())
+    train(**get_params())

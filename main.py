@@ -1,4 +1,6 @@
 # -*- coding: utf - 8 -*-
 
+from model import train
+
 if __name__ == '__main__':
-    pass
+    train()
