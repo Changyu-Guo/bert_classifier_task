@@ -99,8 +99,45 @@ def train(
     checkpoint.save('./saved_models/cls_bert_checkpoint')
 
 
-def predict():
-    pass
+def predict(
+        distribution_strategy,
+        num_labels,
+        max_seq_len,
+        epochs,
+        batch_size,
+        total_features,
+        model_dir,
+        data_path
+):
+
+    steps_per_epoch = int(total_features // batch_size)
+    num_train_steps = steps_per_epoch * epochs
+
+    distribution_strategy = get_distribution_strategy(distribution_strategy, num_gpus=1)
+    with get_strategy_scope(distribution_strategy):
+        model = create_model(num_labels, is_train=True)
+        optimizer = _create_optimizer(num_train_steps)
+        checkpoint = tf.train.Checkpoint(
+            model=model,
+            optimizer=optimizer
+        )
+        latest_checkpoint = tf.train.latest_checkpoint(model_dir)
+        if latest_checkpoint:
+            checkpoint.restore(latest_checkpoint)
+            logging.info('Load checkpoint {} from {}'.format(latest_checkpoint, model_dir))
+
+        model.compile(optimizer)
+
+    train_dataset = read_and_batch_from_tfrecord(
+        data_path,
+        max_seq_len,
+        num_labels,
+        shuffle=True,
+        repeat=True,
+        batch_size=batch_size
+    )
+
+    model.predict(train_dataset)
 
 
 def _create_optimizer(num_train_steps):
@@ -121,7 +158,7 @@ def get_params():
     total_features = desc['total_features']
     return dict(
         distribution_strategy='one_device',
-        epochs=100,
+        epochs=15,
         num_labels=num_labels,
         max_seq_len=max_seq_len,
         total_features=total_features,
