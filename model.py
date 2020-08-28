@@ -113,13 +113,13 @@ def _create_callback():
 
 def params():
     return dict(
-        distribution_strategy='mirror',
-        num_train_steps=100000,
-        steps_between_eval=10000,
+        distribution_strategy='mirrored',
+        num_train_steps=1000,
+        steps_between_eval=100,
         max_seq_len=128,
         num_labels=53,
-        model_dir='',
-        data_path=''
+        model_dir='./saved_models',
+        data_path='./datasets/init_train.tfrecord'
     )
 
 
