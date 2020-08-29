@@ -9,7 +9,6 @@ import collections
 import tensorflow as tf
 from tokenizers import BertWordPieceTokenizer
 from utils import *
-from model import create_model, _create_optimizer
 
 init_train_table_txt_path = './datasets/init-train-table.txt'
 init_train_txt_path = './datasets/init-train.txt'
@@ -173,22 +172,24 @@ def generate_tfrecord():
     )
 
 
-def inference():
+def inference(model, ret_path):
     _, relations, _, _ = extract_relations_from_init_train_table()
-    relation_to_id_map = get_label_to_id_map(relations)
     id_to_relation_map = relations
 
-    model = create_model(num_labels=len(relations), is_train=False)
-    optimizer = _create_optimizer(num_train_steps=100)
     tokenizer = BertWordPieceTokenizer('./vocab.txt')
 
-    checkpoint = tf.train.Checkpoint(model=model, optimizer=optimizer)
+    tokenizer.enable_padding(length=200)
+    tokenizer.enable_truncation(max_length=200)
+
+    checkpoint = tf.train.Checkpoint(model=model)
 
     checkpoint.restore(tf.train.latest_checkpoint('./saved_models'))
 
     examples = extract_examples_from_init_train()
 
-    for example in examples:
+    writer = tf.io.gfile.GFile(ret_path, mode='w')
+
+    for index, example in enumerate(examples):
         text = example.text
         relations = example.relations
 
@@ -201,12 +202,29 @@ def inference():
         inputs_mask = tf.constant(inputs_mask, dtype=tf.int64)
         segment_ids = tf.constant(segment_ids, dtype=tf.int64)
 
-        pred = model.predict([inputs_ids, inputs_mask, segment_ids])
+        inputs_ids = tf.reshape(inputs_ids, (1, -1))
+        inputs_mask = tf.reshape(inputs_mask, (1, -1))
+        segment_ids = tf.reshape(segment_ids, (1, -1))
 
-        print(pred.shape)
+        pred = model.predict(((inputs_ids, inputs_mask, segment_ids),))
 
-        break
+        pred = tf.where(pred > 0.5).numpy()
+
+        pred_relations = []
+        for p in pred:
+            pred_relations.append(id_to_relation_map[p[1]])
+
+        j = {
+            "text": text,
+            "origin_relations": relations,
+            "pred_relations": pred_relations
+        }
+
+        writer.write(json.dumps(j, ensure_ascii=False) + '\n')
+
+        if (index + 1) % 500 == 0:
+            print(index + 1)
 
 
 if __name__ == '__main__':
-    inference()
+    inference(ret_path='./temp_results.txt')
