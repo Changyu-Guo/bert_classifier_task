@@ -201,7 +201,7 @@ TFRECORD_FULL_PATH = './datasets/init_train.tfrecord'
 TRAIN_TFRECORD_PATH = './datasets/train.tfrecord'
 VALID_TFRECORD_PATH = './datasets/valid.tfrecord'
 INFERENCE_RESULTS_DIR = './inference_results'
-BATCH_SIZE = 1
+BATCH_SIZE = 32
 
 
 def get_model_params():
@@ -236,6 +236,6 @@ if __name__ == '__main__':
     logging.set_verbosity(logging.INFO)
     task = ClassifierTask(
         get_model_params(),
-        use_pretrain=False
+        use_pretrain=True
     )
     task.train()
