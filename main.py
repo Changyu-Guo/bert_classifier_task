@@ -5,6 +5,7 @@ import json
 import time
 import collections
 import tensorflow as tf
+import tensorflow_addons as tfa
 from absl import logging
 
 from optimization import create_optimizer
@@ -19,17 +20,17 @@ from data_processor import inference
 
 class ClassifierTask:
 
-    def __init__(self, kwargs, use_pretrain=None):
-        if use_pretrain is None:
-            raise ValueError('Param use_pretrain must be pass')
-
+    def __init__(self, kwargs, use_pretrain=None, batch_size=None):
+        if use_pretrain is None or batch_size is None:
+            raise ValueError('Param use_pretrain and batch_size must be pass')
+        self.batch_size = batch_size
         self.use_pretrain = use_pretrain
+
         self.distribution_strategy = kwargs['distribution_strategy']
         self.epochs = kwargs['epochs']
         self.max_seq_len = kwargs['max_seq_len']
         self.num_labels = kwargs['num_labels']
         self.total_features = kwargs['total_features']
-        self.batch_size = kwargs['batch_size']
         self.model_save_dir = kwargs['model_save_dir']
         self.tfrecord_path = kwargs['tfrecord_path']
         self.train_tfrecord_path = kwargs['train_tfrecord_path']
@@ -41,6 +42,7 @@ class ClassifierTask:
         self.warmup_steps_ratio = kwargs['warmup_steps_ratio']
         self.valid_data_ratio = kwargs['valid_data_ratio']
         self.inference_result_path = kwargs['inference_result_path']
+        self.tensorboard_log_dir = kwargs['tensorboard_log_dir']
 
         self.steps_per_epoch = int(
             (self.total_features * (1 - self.valid_data_ratio)) // self.batch_size
@@ -50,6 +52,7 @@ class ClassifierTask:
 
     def train(self):
         self._ensure_dir_exist(self.model_save_dir)
+        self._ensure_dir_exist(self.tensorboard_log_dir)
 
         # 在 distribution strategy scope 下定义:
         #   1. model
@@ -74,7 +77,25 @@ class ClassifierTask:
             model.compile(
                 optimizer=optimizer,
                 loss=tf.keras.losses.BinaryCrossentropy(from_logits=False),
-                metrics=['binary_accuracy']
+                metrics=[
+                    'binary_accuracy',
+                    tf.keras.metrics.Precision(
+                        thresholds=0.5,
+                        class_id=self.num_labels - 1
+                    ),
+                    tf.keras.metrics.Recall(
+                        thresholds=0.5,
+                        class_id=self.num_labels - 1
+                    ),
+                    tfa.metrics.F1Score(
+                        num_classes=self.num_labels,
+                        average='macro',
+                        threshold=0.5
+                    ),
+                    tfa.metrics.MultiLabelConfusionMatrix(
+                        num_classes=self.num_labels
+                    )
+                ]
             )
 
         if tf.io.gfile.exists(self.train_tfrecord_path) and \
@@ -85,6 +106,14 @@ class ClassifierTask:
                 num_labels=self.num_labels,
                 shuffle=True,
                 repeat=True,
+                batch_size=self.batch_size
+            )
+            valid_dataset = read_and_batch_from_tfrecord(
+                self.valid_tfrecord_path,
+                max_seq_len=self.max_seq_len,
+                num_labels=self.num_labels,
+                shuffle=False,
+                repeat=False,
                 batch_size=self.batch_size
             )
 
@@ -112,13 +141,18 @@ class ClassifierTask:
             save_dataset(valid_dataset, self.valid_tfrecord_path)
 
             train_dataset = train_dataset.repeat().batch(self.batch_size)
+            valid_dataset = valid_dataset.batch(self.batch_size)
+
+        callbacks = self._create_callbacks()
 
         model.fit(
             train_dataset,
             initial_epoch=0,
             epochs=self.epochs,
             steps_per_epoch=self.steps_per_epoch,
-            verbose=1
+            callbacks=callbacks,
+            verbose=1,
+            # validation_data=valid_dataset
         )
 
         checkpoint.save(os.path.join(self.model_save_dir, 'train_end_checkpoint'))
@@ -168,9 +202,11 @@ class ClassifierTask:
         if self.enable_tensorboard:
             callbacks.append(
                 tf.keras.callbacks.TensorBoard(
-                    log_dir=self.model_save_dir
+                    log_dir=self.tensorboard_log_dir
                 )
             )
+
+        return callbacks
 
     def _load_weights_if_possible(self, model, init_weight_path=None):
 
@@ -201,7 +237,7 @@ TFRECORD_FULL_PATH = './datasets/init_train.tfrecord'
 TRAIN_TFRECORD_PATH = './datasets/train.tfrecord'
 VALID_TFRECORD_PATH = './datasets/valid.tfrecord'
 INFERENCE_RESULTS_DIR = './inference_results'
-BATCH_SIZE = 32
+TENSORBOARD_LOG_DIR = './logs'
 
 
 def get_model_params():
@@ -217,7 +253,6 @@ def get_model_params():
         max_seq_len=desc['max_seq_len'],
         num_labels=desc['num_labels'],
         total_features=desc['total_features'],
-        batch_size=BATCH_SIZE,
         model_save_dir=MODEL_SAVE_DIR,
         tfrecord_path='./datasets/init_train.tfrecord',
         init_lr=1e-4,
@@ -228,7 +263,9 @@ def get_model_params():
             INFERENCE_RESULTS_DIR,
             time.strftime('%Y_%m_%d', time.localtime()) + '_result.txt'),
         train_tfrecord_path=TRAIN_TFRECORD_PATH,
-        valid_tfrecord_path=VALID_TFRECORD_PATH
+        valid_tfrecord_path=VALID_TFRECORD_PATH,
+        enable_tensorboard=True,
+        tensorboard_log_dir=TENSORBOARD_LOG_DIR
     )
 
 
@@ -236,6 +273,7 @@ if __name__ == '__main__':
     logging.set_verbosity(logging.INFO)
     task = ClassifierTask(
         get_model_params(),
-        use_pretrain=True
+        use_pretrain=True,
+        batch_size=32
     )
     task.train()
