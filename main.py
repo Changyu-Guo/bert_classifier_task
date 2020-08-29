@@ -249,7 +249,7 @@ def get_model_params():
     return collections.defaultdict(
         lambda: None,
         distribution_strategy='one_device',
-        epochs=15,
+        epochs=30,
         max_seq_len=desc['max_seq_len'],
         num_labels=desc['num_labels'],
         total_features=desc['total_features'],
