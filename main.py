@@ -4,6 +4,7 @@ import os
 import json
 import time
 import collections
+import pandas as pd
 import tensorflow as tf
 import tensorflow_addons as tfa
 from absl import logging
@@ -43,6 +44,7 @@ class ClassifierTask:
         self.valid_data_ratio = kwargs['valid_data_ratio']
         self.inference_result_path = kwargs['inference_result_path']
         self.tensorboard_log_dir = kwargs['tensorboard_log_dir']
+        self.history_save_path = kwargs['history_save_path']
 
         self.steps_per_epoch = int(
             (self.total_features * (1 - self.valid_data_ratio)) // self.batch_size
@@ -145,7 +147,7 @@ class ClassifierTask:
 
         callbacks = self._create_callbacks()
 
-        model.fit(
+        his = model.fit(
             train_dataset,
             initial_epoch=0,
             epochs=self.epochs,
@@ -156,6 +158,8 @@ class ClassifierTask:
         )
 
         checkpoint.save(os.path.join(self.model_save_dir, 'train_end_checkpoint'))
+
+        pd.DataFrame.from_dict(his.history).to_csv(self.history_save_path, index=False)
 
     def eval(self, dataset):
         with get_strategy_scope(self.distribution_strategy):
@@ -238,6 +242,7 @@ TRAIN_TFRECORD_PATH = './datasets/train.tfrecord'
 VALID_TFRECORD_PATH = './datasets/valid.tfrecord'
 INFERENCE_RESULTS_DIR = './inference_results'
 TENSORBOARD_LOG_DIR = './logs'
+HISTORY_SAVE_PATH = './saved_models/history.csv'
 
 
 def get_model_params():
@@ -265,7 +270,8 @@ def get_model_params():
         train_tfrecord_path=TRAIN_TFRECORD_PATH,
         valid_tfrecord_path=VALID_TFRECORD_PATH,
         enable_tensorboard=True,
-        tensorboard_log_dir=TENSORBOARD_LOG_DIR
+        tensorboard_log_dir=TENSORBOARD_LOG_DIR,
+        history_save_path=HISTORY_SAVE_PATH
     )
 
 
