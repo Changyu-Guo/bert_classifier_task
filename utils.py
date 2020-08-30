@@ -2,7 +2,9 @@
 
 import os
 import json
+import pickle
 import collections
+import pandas as pd
 import tensorflow as tf
 from absl import logging
 
@@ -24,3 +26,15 @@ def ids_to_vector(ids, _len):
     for _id in ids:
         zeros[_id] = 1
     return zeros
+
+
+def save_object(path, obj):
+    with open(path, 'wb') as f:
+        pickle.dump(obj, f)
+    f.close()
+
+
+def load_object(path):
+    with open(path, 'rb') as f:
+        pickle.load(f)
+    f.close()

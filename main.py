@@ -16,7 +16,7 @@ from model import create_model
 from inputs_pipeline import read_and_batch_from_tfrecord
 from inputs_pipeline import split_dataset
 from inputs_pipeline import save_dataset
-from data_processor import inference
+from data_processor import inference, inference_tfrecord
 
 
 class ClassifierTask:
@@ -80,20 +80,6 @@ class ClassifierTask:
                 optimizer=optimizer,
                 loss=tf.keras.losses.BinaryCrossentropy(from_logits=False),
                 metrics=[
-                    'binary_accuracy',
-                    tf.keras.metrics.Precision(
-                        thresholds=0.5,
-                        class_id=self.num_labels - 1
-                    ),
-                    tf.keras.metrics.Recall(
-                        thresholds=0.5,
-                        class_id=self.num_labels - 1
-                    ),
-                    tfa.metrics.F1Score(
-                        num_classes=self.num_labels,
-                        average='macro',
-                        threshold=0.5
-                    ),
                     tfa.metrics.MultiLabelConfusionMatrix(
                         num_classes=self.num_labels
                     )
@@ -159,8 +145,6 @@ class ClassifierTask:
 
         checkpoint.save(os.path.join(self.model_save_dir, 'train_end_checkpoint'))
 
-        pd.DataFrame.from_dict(his.history).to_csv(self.history_save_path, index=False)
-
     def eval(self, dataset):
         with get_strategy_scope(self.distribution_strategy):
             model = create_model(self.num_labels, is_train=False, use_pretrain=False)
@@ -186,6 +170,23 @@ class ClassifierTask:
             )
 
         inference(model, self.inference_result_path)
+
+    def predict_with_tfrecord(self):
+        with get_strategy_scope(self.distribution_strategy):
+            model = create_model(self.num_labels, is_train=False, use_pretrain=False)
+            checkpoint = tf.train.Checkpoint(model=model)
+            checkpoint.restore(tf.train.latest_checkpoint('./saved_models/version_12'))
+
+        # read validation dataset
+        dataset = read_and_batch_from_tfrecord(
+            filename=self.valid_tfrecord_path,
+            max_seq_len=self.max_seq_len,
+            num_labels=self.num_labels,
+            shuffle=False,
+            repeat=False,
+            batch_size=self.batch_size
+        )
+        inference_tfrecord(model, self.inference_result_path, dataset)
 
     def _create_callbacks(self):
         """
@@ -279,7 +280,7 @@ if __name__ == '__main__':
     logging.set_verbosity(logging.INFO)
     task = ClassifierTask(
         get_model_params(),
-        use_pretrain=True,
-        batch_size=32
+        use_pretrain=False,
+        batch_size=1
     )
-    task.train()
+    task.predict_with_tfrecord()

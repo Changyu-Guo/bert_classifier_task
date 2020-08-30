@@ -8,6 +8,9 @@ import json
 import collections
 import tensorflow as tf
 from tokenizers import BertWordPieceTokenizer
+from custom_metrics import compute_prf
+from sklearn.metrics import precision_recall_fscore_support
+from sklearn.metrics import classification_report
 from utils import *
 
 init_train_table_txt_path = './datasets/init-train-table.txt'
@@ -226,5 +229,58 @@ def inference(model, ret_path):
             print(index + 1)
 
 
+def inference_tfrecord(model, ret_path, dataset):
+    _, relations, _, _ = extract_relations_from_init_train_table()
+    id_to_relation_map = relations
+
+    tokenizer = BertWordPieceTokenizer(vocab_file='./vocab.txt')
+    writer = tf.io.gfile.GFile(ret_path, mode='w')
+
+    index = 0
+    y_true, y_pred = [], []
+    for data in dataset:
+        inputs_ids = data[0][0][0]
+        label_ids = data[1]
+        tokens = tokenizer.decode(inputs_ids)
+        text = tokens.replace(' ', '')
+
+        pred = model.predict(data)
+        pred = tf.where(pred > 0.5, 1, 0)
+
+        y_true.append(tf.reshape(label_ids, (-1,)).numpy())
+        y_pred.append(tf.reshape(pred, (-1,)).numpy())
+
+        label_ids = tf.where(data[1] == 1)
+        labels = [id_to_relation_map[label_id[1]] for label_id in label_ids]
+        pred = tf.where(pred == 1)
+
+        pred_relations = []
+        for p in pred:
+            pred_relations.append(id_to_relation_map[p[1]])
+
+        j = {
+            "text": text,
+            "origin_relations": labels,
+            "pred_relations": pred_relations
+        }
+
+        writer.write(json.dumps(j, ensure_ascii=False) + '\n')
+
+        index += 1
+        if index % 100 == 0:
+            print(index)
+
+    precision, recall, f1, _ = precision_recall_fscore_support(y_true, y_pred, average='macro', beta=1.0)
+    print('Precision: ', precision)
+    print('Recall', recall)
+    print('F1-Score', f1)
+    print(classification_report(y_true, y_pred))
+
+
+def calculate_tfrecord_prf():
+    pass
+
+
 if __name__ == '__main__':
-    inference(ret_path='./temp_results.txt')
+    # inference(ret_path='./temp_results.txt')
+    inference_tfrecord('./datasets/valid.tfrecord')
