@@ -5,7 +5,10 @@
 
 import os
 import json
+import time
 import collections
+import numpy as np
+import matplotlib.pyplot as plt
 import tensorflow as tf
 from tokenizers import BertWordPieceTokenizer
 from custom_metrics import compute_prf
@@ -23,17 +26,23 @@ MAX_SEQ_LEN = 200
 
 
 class Example:
-    def __init__(self, text, relations):
+    def __init__(self, text, sro_list):
         self.text = text
-        self.relations = relations
+        self.sro_list = sro_list
 
 
 class Feature:
-    def __init__(self, inputs_ids, inputs_mask, segment_ids, label_ids):
+    def __init__(
+            self, inputs_ids, inputs_mask, segment_ids,
+            label_vector, label_ids, start_positions, end_positions
+    ):
         self.inputs_ids = inputs_ids
         self.inputs_mask = inputs_mask
         self.segment_ids = segment_ids
+        self.label_vector = label_vector
         self.label_ids = label_ids
+        self.start_positions = start_positions
+        self.end_positions = end_positions
 
 
 class FeaturesWriter:
@@ -45,7 +54,6 @@ class FeaturesWriter:
         self.total_features = 0
 
     def process_feature(self, feature):
-
         def create_int_feature(values):
             feat = tf.train.Feature(int64_list=tf.train.Int64List(value=list(values)))
             return feat
@@ -238,14 +246,20 @@ def inference_tfrecord(model, ret_path, dataset):
 
     index = 0
     y_true, y_pred = [], []
+    all_sentences = []
     for data in dataset:
-        inputs_ids = data[0][0][0]
-        label_ids = data[1]
-        tokens = tokenizer.decode(inputs_ids)
-        text = tokens.replace(' ', '')
+
+        inputs_ids = data[0][0]
+        labels_ids = data[1]
+
+        sentences = [
+            tokenizer.decode(input_ids).replace(' ', '')
+            for input_ids in inputs_ids
+        ]
+        all_sentences.extend(sentences)
 
         pred = model.predict(data)
-        pred = tf.where(pred > 0.5, 1, 0)
+        pred = tf.where(pred > 0.01, 1, 0)
 
         y_true.append(tf.reshape(label_ids, (-1,)).numpy())
         y_pred.append(tf.reshape(pred, (-1,)).numpy())
@@ -270,17 +284,87 @@ def inference_tfrecord(model, ret_path, dataset):
         if index % 100 == 0:
             print(index)
 
-    precision, recall, f1, _ = precision_recall_fscore_support(y_true, y_pred, average='macro', beta=1.0)
-    print('Precision: ', precision)
-    print('Recall', recall)
-    print('F1-Score', f1)
-    print(classification_report(y_true, y_pred))
+
+def calculate_tfrecord_prf(model, dataset):
+    thresholds = np.arange(0.5, 0, -0.01)
+    precisions = []
+    recalls = []
+    f1_scores = []
+    for threshold in thresholds:
+        y_true, y_pred = [], []
+        for data in dataset:
+            labels_ids = data[1]
+            y_true.extend(labels_ids.numpy())
+
+            pred = model.predict(data)
+            pred = tf.where(pred > threshold, 1, 0)
+            y_pred.extend(pred.numpy())
+
+        precision, recall, f1_score, _ = precision_recall_fscore_support(
+            y_true, y_pred, average='macro'
+        )
+        precisions.append(precision)
+        recalls.append(recall)
+        f1_scores.append(f1_score)
+
+        print(threshold)
+
+    print(precisions)
+    print(recalls)
+    print(f1_scores)
+
+    plt.plot(thresholds, precisions, 'r^-', label='Precision')
+    plt.plot(thresholds, recalls, 'go-', label='Recall')
+    plt.plot(thresholds, f1_scores, 'b+-', label='F1-Score')
+
+    for threshold, precision in zip(thresholds, precisions):
+        plt.text(threshold, precision + 0.01, '%.3f' % precision, ha='center', va='bottom', fontsize=6)
+    for threshold, recall in zip(thresholds, recalls):
+        plt.text(threshold, recall, '%.3f' % recall, ha='center', va='bottom', fontsize=6)
+    for threshold, f1_score in zip(thresholds, f1_scores):
+        plt.text(threshold, f1_score - 0.01, '%.3f' % f1_score, ha='center', va='bottom', fontsize=6)
+
+    plt.xlabel('thresholds')
+    plt.ylabel('precision - recall - f1-score')
+
+    plt.xlim(thresholds[0] - 0.05, thresholds[-1] + 0.05)
+    plt.ylim(0.8, 0.95)
+
+    plt.legend()
+
+    plt.show()
 
 
-def calculate_tfrecord_prf():
-    pass
+def log_inference_tfrecord_time(model, dataset, batch_size):
+    _, relations, _, _ = extract_relations_from_init_train_table()
+    id_to_relation_map = relations
+
+    dataset = dataset.take(4000)
+
+    total_batch = 0
+
+    start = time.time()
+    pred_relations = []
+    for data in dataset:
+        total_batch += 1
+
+        # (batch_size, num_labels)
+        pred = model.predict(data)
+
+        # convert 0 ~ 1 point to 0 and 1
+        pred = tf.where(pred > 0.5, 1, 0)
+
+        # get true label
+        pred = tf.where(pred == 1)
+
+    end = time.time()
+    print(
+        'batch_size: {}, total_batch: {}, total_time: {:.4} s, time_per_batch: {:.4} s, time_per_example: {:.4} '
+        's'.format(
+            batch_size, total_batch, end - start, (end - start) / total_batch,
+            (end - start) / (batch_size * total_batch))
+    )
 
 
 if __name__ == '__main__':
-    # inference(ret_path='./temp_results.txt')
-    inference_tfrecord('./datasets/valid.tfrecord')
+    calculate_tfrecord_prf(None, None)

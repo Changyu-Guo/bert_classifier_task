@@ -3,6 +3,7 @@
     <words>
       <w>adamw</w>
       <w>ckpt</w>
+      <w>logits</w>
     </words>
   </dictionary>
 </component>

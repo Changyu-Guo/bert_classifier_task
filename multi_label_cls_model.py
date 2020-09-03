@@ -33,5 +33,3 @@ def create_model(num_labels, is_train, use_pretrain=False):
     return model
 
 
-class ScikitLearnMetrics(tf.keras.callbacks.Callback):
-    pass

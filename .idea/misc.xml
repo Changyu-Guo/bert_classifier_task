@@ -3,6 +3,7 @@
   <component name="ProjectPlainTextFileTypeManager">
     <file url="file://$PROJECT_DIR$/datasets/init-train-table.txt" />
     <file url="file://$PROJECT_DIR$/datasets/init-train.txt" />
+    <file url="file://$PROJECT_DIR$/datasets/relation_questions.txt" />
     <file url="file://$PROJECT_DIR$/inference_results/2020_08_28_results.txt" />
     <file url="file://$PROJECT_DIR$/inference_results/2020_08_29_result.txt" />
     <file url="file://$PROJECT_DIR$/inference_results/2020_08_30_result.txt" />

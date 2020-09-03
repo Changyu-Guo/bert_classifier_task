@@ -12,20 +12,26 @@ from absl import logging
 from optimization import create_optimizer
 from distribu_utils import get_distribution_strategy
 from distribu_utils import get_strategy_scope
-from model import create_model
+from multi_label_cls_model import create_model
 from inputs_pipeline import read_and_batch_from_tfrecord
 from inputs_pipeline import split_dataset
 from inputs_pipeline import save_dataset
-from data_processor import inference, inference_tfrecord
+from data_processor import (
+    inference,
+    inference_tfrecord,
+    calculate_tfrecord_prf,
+    log_inference_tfrecord_time
+)
 
 
 class ClassifierTask:
 
-    def __init__(self, kwargs, use_pretrain=None, batch_size=None):
+    def __init__(self, kwargs, use_pretrain=None, batch_size=None, inference_type=None):
         if use_pretrain is None or batch_size is None:
             raise ValueError('Param use_pretrain and batch_size must be pass')
         self.batch_size = batch_size
         self.use_pretrain = use_pretrain
+        self.inference_type = inference_type
 
         self.distribution_strategy = kwargs['distribution_strategy']
         self.epochs = kwargs['epochs']
@@ -161,7 +167,7 @@ class ClassifierTask:
         )
         model.evaluate(dataset)
 
-    def predict(self, predict_dataset):
+    def predict(self):
         with get_strategy_scope(self.distribution_strategy):
             model = create_model(self.num_labels, is_train=False, use_pretrain=False)
             self._load_weights_if_possible(
@@ -172,21 +178,43 @@ class ClassifierTask:
         inference(model, self.inference_result_path)
 
     def predict_with_tfrecord(self):
+
+        # restore model
         with get_strategy_scope(self.distribution_strategy):
             model = create_model(self.num_labels, is_train=False, use_pretrain=False)
             checkpoint = tf.train.Checkpoint(model=model)
-            checkpoint.restore(tf.train.latest_checkpoint('./saved_models/version_12'))
+            checkpoint.restore(tf.train.latest_checkpoint('./saved_models/classifier_epoch_30'))
 
-        # read validation dataset
         dataset = read_and_batch_from_tfrecord(
-            filename=self.valid_tfrecord_path,
+            filename=self.train_tfrecord_path,  # Notice ####
             max_seq_len=self.max_seq_len,
             num_labels=self.num_labels,
             shuffle=False,
             repeat=False,
-            batch_size=self.batch_size
+            batch_size=1  # Notice ####
         )
-        inference_tfrecord(model, self.inference_result_path, dataset)
+        for data in dataset:
+            model.predict(data)
+            break
+
+        # read validation dataset
+        print('start...')
+        batch_sizes = [2000, 1000, 500, 400, 200, 100, 50, 1]
+        for batch_size in batch_sizes:
+            dataset = read_and_batch_from_tfrecord(
+                filename=self.train_tfrecord_path,  # Notice ####
+                max_seq_len=self.max_seq_len,
+                num_labels=self.num_labels,
+                shuffle=False,
+                repeat=False,
+                batch_size=batch_size  # Notice ####
+            )
+            if self.inference_type == 'inference_tfrecord':
+                inference_tfrecord(model, self.inference_result_path, dataset)
+            elif self.inference_type == 'calculate_tfrecord_prf':
+                calculate_tfrecord_prf(model, dataset)
+            elif self.inference_type == 'log_inference_tfrecord_time':
+                log_inference_tfrecord_time(model, dataset, batch_size)
 
     def _create_callbacks(self):
         """
@@ -235,6 +263,21 @@ class ClassifierTask:
             tf.io.gfile.makedirs(_dir)
 
 
+class MRCTask:
+
+    def __init__(self):
+        pass
+
+    def train(self):
+        pass
+
+    def eval(self):
+        pass
+
+    def predict(self):
+        pass
+
+
 # Global Variables #####
 DESC_FILE_PATH = './datasets/desc.json'
 MODEL_SAVE_DIR = './saved_models'
@@ -280,7 +323,8 @@ if __name__ == '__main__':
     logging.set_verbosity(logging.INFO)
     task = ClassifierTask(
         get_model_params(),
-        use_pretrain=False,
-        batch_size=1
+        use_pretrain=False,  # Notice ###
+        batch_size=2,  # Notice ###
+        inference_type='log_inference_tfrecord_time'
     )
     task.predict_with_tfrecord()
