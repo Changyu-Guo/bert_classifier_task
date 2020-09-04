@@ -1,10 +1,16 @@
 # -*- coding: utf - 8 -*-
 
+import json
 import tensorflow as tf
 from data_processor import Feature, FeaturesWriter
 
 
 def load_desc(path):
+    with tf.io.gfile.GFile(path, mode='r') as reader:
+        return json.load(reader)
+
+
+def load_squad_meta(path):
     with tf.io.gfile.GFile(path, mode='r') as reader:
         return json.load(reader)
 
@@ -84,3 +90,51 @@ def save_dataset(dataset, path):
         writer.process_feature(feature)
 
     writer.close()
+
+
+def read_and_batch_from_squad_tfrecord(
+        filename, max_seq_len, shuffle=True,
+        repeat=True, batch_size=None):
+    dataset = tf.data.TFRecordDataset(filename)
+
+    def _parse_example(example):
+        name_to_features = {
+            'input_ids': tf.io.FixedLenFeature([max_seq_len], tf.int64),
+            'input_mask': tf.io.FixedLenFeature([max_seq_len], tf.int64),
+            'segment_ids': tf.io.FixedLenFeature([max_seq_len], tf.int64),
+            'start_positions': tf.io.FixedLenFeature([], tf.int64),
+            'end_positions': tf.io.FixedLenFeature([], tf.int64)
+        }
+
+        example = tf.io.parse_single_example(example, name_to_features)
+
+        return example
+
+    dataset = dataset.map(_parse_example, num_parallel_calls=tf.data.experimental.AUTOTUNE)
+
+    if shuffle:
+        dataset = dataset.shuffle(2020)
+
+    if repeat:
+        dataset = dataset.repeat()
+
+    if batch_size:
+        dataset = dataset.batch(batch_size)
+
+    dataset = dataset.prefetch(buffer_size=tf.data.experimental.AUTOTUNE)
+
+    return dataset
+
+
+if __name__ == '__main__':
+    dataset = read_and_batch_from_squad_tfrecord(
+        'datasets/tfrecord_datasets/mrc_all.tfrecord',
+        max_seq_len=384,
+        shuffle=True,
+        repeat=False,
+        batch_size=1
+    )
+
+    for data in dataset:
+        print(data)
+        break

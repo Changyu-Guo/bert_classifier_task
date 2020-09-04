@@ -16,10 +16,10 @@ from sklearn.metrics import precision_recall_fscore_support
 from sklearn.metrics import classification_report
 from utils import *
 
-init_train_table_txt_path = './datasets/init-train-table.txt'
-init_train_txt_path = './datasets/init-train.txt'
-tfrecord_save_path = './datasets/init_train.tfrecord'
-desc_json_save_path = './datasets/desc.json'
+init_train_table_txt_path = 'datasets/raw_datasets/init-train-table.txt'
+init_train_txt_path = 'datasets/raw_datasets/init-train.txt'
+tfrecord_save_path = 'datasets/tfrecord_datasets/multi_label_cls_all.tfrecord'
+desc_json_save_path = 'datasets/tfrecord_datasets/multi_label_cls_all_desc.json'
 vocab_filepath = './vocab.txt'
 
 MAX_SEQ_LEN = 200

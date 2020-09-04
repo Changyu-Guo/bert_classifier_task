@@ -7,24 +7,32 @@ import os
 import json
 import collections
 import tensorflow as tf
-from tokenizers import BertWordPieceTokenizer
 from data_processor import load_init_train_txt
 from data_processor import extract_relations_from_init_train_table
 from utils import get_label_to_id_map
+from squad_processor import read_squad_examples
 
-relation_questions_txt_path = './datasets/relation_questions.txt'
+relation_questions_txt_path = 'datasets/raw_datasets/relation_questions.txt'
 tfrecord_save_path = './datasets/relation_qas.tfrecord'
 desc_json_save_path = './datasets/relation_qas_desc.json'
 vocab_filepath = './vocab.txt'
+qa_examples_save_path = 'datasets/preprocessed_datasets/qa_examples.json'
+cls_examples_save_path = 'datasets/preprocessed_datasets/cls_examples.json'
 
 
 class InitTrainExample:
+    """
+        用于结构化 init-train.txt 中的数据
+    """
     def __init__(self, text, relations):
         self.text = text
-        self.relations = relations
+        self.relations = relations  # list of dict
 
 
 class RelationQuestionsExample:
+    """
+        用于结构化 relation_questions.txt 中的数据
+    """
     def __init__(
             self,
             relation_id,
@@ -38,29 +46,6 @@ class RelationQuestionsExample:
         self.relation_question_a = relation_question_a
         self.relation_question_b = relation_question_b
         self.relation_question_c = relation_question_c
-
-
-class QAExample:
-    def __init__(self, text, question, answer_text, start_position):
-        self.text = text
-        self.question = question
-        self.answer_text = answer_text
-        self.start_position = start_position
-
-
-class CLSExample:
-    def __init__(self, text, question, is_valid):
-        self.text = text
-        self.question = question
-        self.is_valid = is_valid
-
-
-class Feature:
-    pass
-
-
-class FeaturesWriter:
-    pass
 
 
 def load_relation_questions_txt(filepath=relation_questions_txt_path):
@@ -90,7 +75,7 @@ def extract_examples_from_init_train():
     return examples
 
 
-def extract_questions_from_relation_qa():
+def extract_examples_from_relation_questions():
     relation_questions = load_relation_questions_txt()
     _, relations, _, _ = extract_relations_from_init_train_table()
     relation_to_id_map = get_label_to_id_map(relations)
@@ -104,13 +89,13 @@ def extract_questions_from_relation_qa():
 
         relation_id = relation_to_id_map[relation]
 
-        question_a = relation_questions[cur_index + 1].split('：')[1]
+        question_a = relation_questions[cur_index + 1].split('：')[1].strip()
         question_a = question_a.replace('？', '')
 
-        question_b = relation_questions[cur_index + 2].split('：')[1]
+        question_b = relation_questions[cur_index + 2].split('：')[1].strip()
         question_b = question_b.replace('？', '')
 
-        question_c = relation_questions[cur_index + 3].split('：')[1]
+        question_c = relation_questions[cur_index + 3].split('：')[1].strip()
         question_c = question_c.replace('？', '')
 
         relation_questions_dict[relation] = RelationQuestionsExample(
@@ -121,26 +106,32 @@ def extract_questions_from_relation_qa():
     return relation_questions_dict
 
 
-def extract_examples_from_relation_questions():
-    """
-        抽取思路：
-            1. 从 init-train.txt 中获取 text, relation, relation 对应的 answer
-                具体的：将 init-train.txt 和 relation-question.txt 都弄成 object, 然后使用 dict 循环寻找对应关系就行了
-            2. 从 relation-questions.txt 中抽取 relation 对应的答案
-            3. 根据 relation, 将 init-train.txt 和 relation-questions.txt 联系起来
-            4. 形成 text:question:answer:start_position:end_position 问答数据
-            5. 形成 text:question:answer 分类数据
-    """
+def convert_example_to_squad_json_format(
+        qa_examples_path=qa_examples_save_path,
+        cls_examples_path=cls_examples_save_path
+):
     init_train_examples = extract_examples_from_init_train()
-    relation_question_examples = extract_questions_from_relation_qa()
+    relation_questions_dict = extract_examples_from_relation_questions()
 
-    qa_examples = []
     cls_examples = []
 
+    squad_json = {
+        'data': [
+            {
+                'title': '',
+                'paragraphs': []
+            }
+        ]
+    }
+    _id = 0
     for item in init_train_examples:
         text = item.text
         relations = item.relations
 
+        squad_json_item = {
+            'context': text,
+            'qas': []
+        }
         for relation in relations:
             _subject = relation['subject']
             _object = relation['object']
@@ -149,7 +140,7 @@ def extract_examples_from_relation_questions():
             _subject_start_position = text.find(_subject)
             _object_start_position = text.find(_object)
 
-            relation_question = relation_question_examples[_relation]
+            relation_question = relation_questions_dict[_relation]
 
             relation_question_a = relation_question.relation_question_a
             relation_question_b = relation_question.relation_question_b.replace('subject', _subject)
@@ -159,50 +150,53 @@ def extract_examples_from_relation_questions():
                 'object', _object
             )
 
-            # question 1
-            qa_example = QAExample(
-                text,
-                relation_question_a,
-                _subject,
-                _subject_start_position
-            )
-            qa_examples.append(qa_example)
+            # to squad json format
+            qas_item = {
+                'question': relation_question_a,
+                'answers': [
+                    {
+                        'answer_start': _subject_start_position,
+                        'text': _subject
+                    }
+                ],
+                'id': _id
+            }
+            squad_json_item['qas'].append(qas_item)
+            _id += 1
 
-            # question 2
-            qa_example = QAExample(
-                text,
-                relation_question_b,
-                _object,
-                _object_start_position
-            )
-            qa_examples.append(qa_example)
+            qas_item = {
+                'question': relation_question_b,
+                'answers': [
+                    {
+                        'answer_start': _object_start_position,
+                        'text': _object
+                    }
+                ],
+                'id': _id
+            }
+            squad_json_item['qas'].append(qas_item)
+            _id += 1
+
+            squad_json['data'][0]['paragraphs'].append(squad_json_item)
 
             # question 3, for classification
-            cls_example = CLSExample(
-                text,
-                relation_question_c,
-                is_valid=True
-            )
-            cls_examples.append(cls_example)
+            cls_item = {
+                'text': text,
+                'question': relation_question_c,
+                'is_valid': True
+            }
+            cls_examples.append(cls_item)
 
             # TODO 考虑根据当前正样本随机加入一些负样本
 
-    return qa_examples, cls_examples
+    with tf.io.gfile.GFile(qa_examples_path, 'w') as writer:
+        writer.write(json.dumps(squad_json, ensure_ascii=False, indent=4))
+    writer.close()
 
-
-def convert_qa_example_to_feature(examples):
-    pass
-
-
-def convert_cls_example_to_feature(examples):
-    pass
-
-
-def convert_qa_and_cls_example_to_feature():
-    qa_examples, cls_examples = extract_examples_from_relation_questions()
-    convert_qa_example_to_feature(qa_examples)
-    convert_cls_example_to_feature(cls_examples)
+    with tf.io.gfile.GFile(cls_examples_path, 'w') as writer:
+        writer.write(json.dumps(cls_examples, ensure_ascii=False, indent=4))
+    writer.close()
 
 
 if __name__ == '__main__':
-    convert_qa_and_cls_example_to_feature()
+    convert_example_to_squad_json_format()
