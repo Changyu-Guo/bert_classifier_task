@@ -782,20 +782,20 @@ def generate_tf_record_from_json_file(
         doc_stride=128,
         version_2_with_negative=False
 ):
-    train_file_output_path = os.path.join(output_dir, output_prefix + '_' + 'all.tfrecord')
-    # eval_file_output_path = os.path.join(output_dir, 'eval.tfrecord')
-    train_meta_data_output_path = os.path.join(output_dir, output_prefix + '_' + 'all_meta_data.json')
-    # eval_meta_data_output_path = os.path.join(output_dir, 'eval_meta_data.json')
+    train_file_output_path = os.path.join(output_dir, output_prefix + '_' + 'train.tfrecord')
+    eval_file_output_path = os.path.join(output_dir, output_prefix + '_' + 'valid.tfrecord')
+    train_meta_data_output_path = os.path.join(output_dir, output_prefix + '_' + 'train_meta_data.json')
+    eval_meta_data_output_path = os.path.join(output_dir, output_prefix + '_' + 'valid_meta_data.json')
     train_examples = read_squad_examples(
         input_file=train_file_path,
         is_training=True,
         version_2_with_negative=version_2_with_negative
     )
-    # eval_examples = read_squad_examples(
-    #     input_file=eval_file_path,
-    #     is_training=False,
-    #     version_2_with_negative=version_2_with_negative
-    # )
+    eval_examples = read_squad_examples(
+        input_file=eval_file_path,
+        is_training=True,
+        version_2_with_negative=version_2_with_negative
+    )
 
     tokenizer = bert_tokenization.FullTokenizer(
         vocab_file=vocab_file_path,
@@ -803,7 +803,7 @@ def generate_tf_record_from_json_file(
     )
 
     train_writer = FeatureWriter(filename=train_file_output_path, is_training=True)
-    # eval_writer = FeatureWriter(filename=eval_file_output_path, is_training=False)
+    eval_writer = FeatureWriter(filename=eval_file_output_path, is_training=False)
 
     number_of_train_examples = convert_examples_to_features(
         examples=train_examples,
@@ -816,16 +816,16 @@ def generate_tf_record_from_json_file(
     )
     train_writer.close()
 
-    # number_of_eval_examples = convert_examples_to_features(
-    #     examples=eval_examples,
-    #     tokenizer=tokenizer,
-    #     max_seq_length=max_seq_length,
-    #     doc_stride=doc_stride,
-    #     max_query_length=max_query_length,
-    #     is_training=False,
-    #     output_fn=eval_writer.process_feature
-    # )
-    # eval_writer.close()
+    number_of_eval_examples = convert_examples_to_features(
+        examples=eval_examples,
+        tokenizer=tokenizer,
+        max_seq_length=max_seq_length,
+        doc_stride=doc_stride,
+        max_query_length=max_query_length,
+        is_training=True,
+        output_fn=eval_writer.process_feature
+    )
+    eval_writer.close()
 
     train_meta_data = {
         "task_type": "bert_squad_train",
@@ -835,30 +835,30 @@ def generate_tf_record_from_json_file(
         "doc_stride": doc_stride,
         "version_2_with_negative": version_2_with_negative,
     }
-    # eval_meta_data = {
-    #     "task_type": "bert_squad_eval",
-    #     "eval_data_size": number_of_eval_examples,
-    #     "max_seq_length": max_seq_length,
-    #     "max_query_length": max_query_length,
-    #     "doc_stride": doc_stride,
-    #     "version_2_with_negative": version_2_with_negative,
-    # }
+    eval_meta_data = {
+        "task_type": "bert_squad_eval",
+        "eval_data_size": number_of_eval_examples,
+        "max_seq_length": max_seq_length,
+        "max_query_length": max_query_length,
+        "doc_stride": doc_stride,
+        "version_2_with_negative": version_2_with_negative,
+    }
 
     with open(train_meta_data_output_path, 'w', encoding='utf-8') as f:
         f.write(json.dumps(train_meta_data, ensure_ascii=False, indent=2))
     f.close()
 
-    # with open(eval_meta_data_output_path, 'w', encoding='utf-8') as f:
-    #     f.write(json.dumps(eval_meta_data, ensure_ascii=True, indent=2))
-    # f.close()
+    with open(eval_meta_data_output_path, 'w', encoding='utf-8') as f:
+        f.write(json.dumps(eval_meta_data, ensure_ascii=True, indent=2))
+    f.close()
 
-    return train_meta_data  # , eval_meta_data
+    return train_meta_data, eval_meta_data
 
 
 if __name__ == '__main__':
     generate_tf_record_from_json_file(
-        train_file_path='datasets/preprocessed_datasets/qa_examples.json',
-        eval_file_path=None,
+        train_file_path='datasets/preprocessed_datasets/qa_train_examples.json',
+        eval_file_path='datasets/preprocessed_datasets/qa_valid_examples.json',
         vocab_file_path='./vocab.txt',
         output_dir='./datasets/tfrecord_datasets',
         output_prefix='mrc',

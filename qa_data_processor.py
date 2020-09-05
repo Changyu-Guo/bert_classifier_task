@@ -14,8 +14,14 @@ from squad_processor import read_squad_examples
 
 relation_questions_txt_path = 'datasets/raw_datasets/relation_questions.txt'
 vocab_filepath = './vocab.txt'
-qa_examples_save_path = 'datasets/preprocessed_datasets/qa_examples.json'
-cls_examples_save_path = 'datasets/preprocessed_datasets/cls_examples.json'
+
+# mrc task
+qa_train_examples_save_path = 'datasets/preprocessed_datasets/qa_train_examples.json'
+qa_valid_examples_save_path = 'datasets/preprocessed_datasets/qa_valid_examples.json'
+
+# classification task
+cls_train_examples_save_path = 'datasets/preprocessed_datasets/cls_train_examples.json'
+cls_valid_examples_save_path = 'datasets/preprocessed_datasets/cls_valid_examples.json'
 
 
 class InitTrainExample:
@@ -124,33 +130,50 @@ def extract_examples_from_relation_questions():
 
 
 def convert_example_to_squad_json_format(
-        qa_examples_path=qa_examples_save_path,
-        cls_examples_path=cls_examples_save_path
+        qa_train_examples_path=qa_train_examples_save_path,
+        qa_valid_examples_path=qa_valid_examples_save_path,
+        cls_train_examples_path=cls_train_examples_save_path,
+        cls_valid_examples_path=cls_valid_examples_save_path
 ):
     init_train_examples = extract_examples_from_init_train()
     relation_questions_dict = extract_examples_from_relation_questions()
 
     # 存储用于分类的数据
-    cls_examples = []
+    # 训练集
+    train_cls_examples = []
+    valid_cls_examples = []
 
     # 存储用于阅读理解的数据
-    squad_json = {
+    # 训练集
+    train_squad_json = {
         'data': [
             {
-                'title': 'temp title',
+                'title': 'train data',
                 'paragraphs': []
             }
         ]
     }
+    # 验证集
+    valid_squad_json = {
+        'data': [
+            {
+                'title': 'eval data',
+                'paragraphs': []
+            }
+        ]
+    }
+    # 为每一条 example 分配一个唯一的字符串 id
     _id = 0
-    for item in init_train_examples:
+    for item_index, item in enumerate(init_train_examples):
         text = item.text
         relations = item.relations
 
+        # 训练集
         squad_json_item = {
             'context': text,
             'qas': []
         }
+        cls_items = []
         for relation in relations:
             _subject = relation['subject']
             _object = relation['object']
@@ -179,7 +202,7 @@ def convert_example_to_squad_json_format(
                         'text': _subject
                     }
                 ],
-                'id': _id
+                'id': 'id' + str(_id)
             }
             squad_json_item['qas'].append(qas_item)
             _id += 1
@@ -193,35 +216,44 @@ def convert_example_to_squad_json_format(
                         'text': _object
                     }
                 ],
-                'id': _id
+                'id': 'id' + str(_id)
             }
             squad_json_item['qas'].append(qas_item)
             _id += 1
 
-            squad_json['data'][0]['paragraphs'].append(squad_json_item)
-
             # question 3, for classification
-            cls_item = {
+            cls_items.append({
                 'text': text,
                 'question': relation_question_c,
                 'is_valid': True
-            }
-            cls_examples.append(cls_item)
+            })
 
-            # TODO 考虑根据当前正样本随机加入一些负样本
+        # 当前 item 被分到验证集
+        if (item_index + 1) % 10 == 0:
+            valid_squad_json['data'][0]['paragraphs'].append(squad_json_item)
+            valid_cls_examples.extend(cls_items)
+        else:
+            # 当前 item 被分到训练集
+            train_squad_json['data'][0]['paragraphs'].append(squad_json_item)
+            train_cls_examples.extend(cls_items)
 
-            # logging info
-            if _id % 1000 == 0:
-                print(_id)
+        if (item_index + 1) % 1000 == 0:
+            print(item_index + 1)
 
     # 将 mrc 数据写入 json 文件
-    with tf.io.gfile.GFile(qa_examples_path, 'w') as writer:
-        writer.write(json.dumps(squad_json, ensure_ascii=False, indent=2))
+    with tf.io.gfile.GFile(qa_train_examples_path, 'w') as writer:
+        writer.write(json.dumps(train_squad_json, ensure_ascii=False, indent=2))
+    writer.close()
+    with tf.io.gfile.GFile(qa_valid_examples_path, 'w') as writer:
+        writer.write(json.dumps(valid_squad_json, ensure_ascii=False, indent=2))
     writer.close()
 
     # 将 cls 数据写入 json 文件
-    with tf.io.gfile.GFile(cls_examples_path, 'w') as writer:
-        writer.write(json.dumps(cls_examples, ensure_ascii=False, indent=2))
+    with tf.io.gfile.GFile(cls_train_examples_path, 'w') as writer:
+        writer.write(json.dumps(train_cls_examples, ensure_ascii=False, indent=2))
+    writer.close()
+    with tf.io.gfile.GFile(cls_valid_examples_path, 'w') as writer:
+        writer.write(json.dumps(valid_cls_examples, ensure_ascii=False, indent=2))
     writer.close()
 
 

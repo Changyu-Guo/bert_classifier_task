@@ -32,6 +32,8 @@ class MRCTask:
         self.epochs = kwargs['epochs']
         self.max_seq_len = kwargs['max_seq_len']
         self.total_features = kwargs['total_features']
+        self.train_features = kwargs['train_features']
+        self.valid_features = kwargs['valid_features']
 
         self.tfrecord_path = kwargs['tfrecord_path']
         self.train_tfrecord_path = kwargs['train_tfrecord_path']
@@ -55,7 +57,7 @@ class MRCTask:
         )
 
         self.steps_per_epoch = int(
-            (self.total_features * (1 - self.valid_data_ratio)) // self.batch_size
+            self.train_features // self.batch_size
         )
         self.total_train_steps = self.steps_per_epoch * self.epochs
         self.distribution_strategy = get_distribution_strategy(self.distribution_strategy, num_gpus=1)
@@ -93,7 +95,8 @@ class MRCTask:
                     tf.keras.losses.SparseCategoricalCrossentropy(
                         from_logits=False,
                     )
-                ]
+                ],
+                loss_weights=[0.5, 0.5]
             )
 
         if tf.io.gfile.exists(self.train_tfrecord_path) and \
@@ -190,6 +193,23 @@ class MRCTask:
 
         return callbacks
 
+    def inference_with_tfrecord(self):
+        with get_strategy_scope(self.distribution_strategy):
+            model = create_mrc_model(is_train=False, use_pretrain=False)
+            checkpoint = tf.train.Checkpoint(model=model)
+            checkpoint.restore(tf.train.latest_checkpoint('./saved_models'))
+
+        dataset = read_and_batch_from_squad_tfrecord(
+            filename=self.valid_tfrecord_path,
+            max_seq_len=self.max_seq_len,
+            shuffle=True,
+            repeat=False,
+            batch_size=128
+        )
+
+        for data in dataset:
+            pass
+
 
 # Global Variables #####
 
@@ -213,17 +233,25 @@ TENSORBOARD_LOG_DIR = './logs/mrc-logs'
 
 def get_model_params():
     # load tfrecord description
-    with tf.io.gfile.GFile(MRC_ALL_TFRECORD_DESC_PATH, mode='r') as reader:
-        desc = json.load(reader)
+    with tf.io.gfile.GFile(MRC_TRAIN_TFRECORD_DESC_PATH, mode='r') as reader:
+        train_desc = json.load(reader)
     reader.close()
+    with tf.io.gfile.GFile(MRC_VALID_TFRECORD_DESC_PATH, mode='r') as reader:
+        valid_desc = json.load(reader)
+    reader.close()
+
+    train_features = train_desc['train_data_size']
+    valid_features = valid_desc['eval_data_size']
 
     return collections.defaultdict(
         lambda: None,
         task_name=TASK_NAME,
         distribution_strategy='one_device',
         epochs=15,
-        max_seq_len=desc['max_seq_length'],
-        total_features=desc['train_data_size'],
+        max_seq_len=train_desc['max_seq_length'],
+        total_features=None,
+        train_features=train_features,
+        valid_features=valid_features,
         model_save_dir=MODEL_SAVE_DIR,
         tfrecord_path=MRC_ALL_TFRECORD_PATH,
         train_tfrecord_path=MRC_TRAIN_TFRECORD_PATH,
@@ -243,7 +271,7 @@ def main():
     task = MRCTask(
         get_model_params(),
         use_pretrain=True,
-        batch_size=32,
+        batch_size=64,
         inference_type=None
     )
     return task

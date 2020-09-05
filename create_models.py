@@ -57,12 +57,15 @@ def create_mrc_model(is_train=True, use_pretrain=False):
     # (batch_size, seq_len, hidden_size)
     embedding = bert_output[0]
 
+    # (batch_size, seq_len, 1)
     start_logits = tf.keras.layers.Dense(1, name='start_logits', use_bias=False)(embedding)
+    # (batch_size, seq_len)
     start_logits = tf.keras.layers.Flatten()(start_logits)
 
     end_logits = tf.keras.layers.Dense(1, name='end_logits', use_bias=False)(embedding)
     end_logits = tf.keras.layers.Flatten()(end_logits)
 
+    # (batch_size, 1)
     start_probs = tf.keras.layers.Activation(tf.keras.activations.softmax, name='start_pos')(start_logits)
     end_probs = tf.keras.layers.Activation(tf.keras.activations.softmax, name='end_pos')(end_logits)
 
