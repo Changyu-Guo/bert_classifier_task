@@ -85,7 +85,6 @@ def save_dataset(dataset, path):
             inputs_ids=data[0][0].numpy(),
             inputs_mask=data[0][1].numpy(),
             segment_ids=data[0][2].numpy(),
-            label_ids=data[1].numpy()
         )
         writer.process_feature(feature)
 
@@ -99,16 +98,22 @@ def read_and_batch_from_squad_tfrecord(
 
     def _parse_example(example):
         name_to_features = {
-            'input_ids': tf.io.FixedLenFeature([max_seq_len], tf.int64),
-            'input_mask': tf.io.FixedLenFeature([max_seq_len], tf.int64),
+            'inputs_ids': tf.io.FixedLenFeature([max_seq_len], tf.int64),
+            'inputs_mask': tf.io.FixedLenFeature([max_seq_len], tf.int64),
             'segment_ids': tf.io.FixedLenFeature([max_seq_len], tf.int64),
-            'start_positions': tf.io.FixedLenFeature([], tf.int64),
-            'end_positions': tf.io.FixedLenFeature([], tf.int64)
+            'start_position': tf.io.FixedLenFeature([], tf.int64),
+            'end_position': tf.io.FixedLenFeature([], tf.int64)
         }
 
-        example = tf.io.parse_single_example(example, name_to_features)
+        parsed_example = tf.io.parse_single_example(example, name_to_features)
 
-        return example
+        inputs_ids = parsed_example['inputs_ids']
+        inputs_mask = parsed_example['inputs_mask']
+        segment_ids = parsed_example['segment_ids']
+        start_position = parsed_example['start_position']
+        end_position = parsed_example['end_position']
+
+        return (inputs_ids, inputs_mask, segment_ids), (start_position, end_position)
 
     dataset = dataset.map(_parse_example, num_parallel_calls=tf.data.experimental.AUTOTUNE)
 

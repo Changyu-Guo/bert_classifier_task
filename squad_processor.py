@@ -79,7 +79,7 @@ class InputFeatures(object):
         self.is_impossible = is_impossible
 
 
-class FeatureWriter(object):
+class FeatureWriter:
     def __init__(self, filename, is_training):
         self.filename = filename
         self.is_training = is_training
@@ -97,13 +97,13 @@ class FeatureWriter(object):
 
         features = collections.OrderedDict()
         features["unique_ids"] = create_int_feature([feature.unique_id])
-        features["input_ids"] = create_int_feature(feature.input_ids)
-        features["input_mask"] = create_int_feature(feature.input_mask)
+        features["inputs_ids"] = create_int_feature(feature.input_ids)
+        features["inputs_mask"] = create_int_feature(feature.input_mask)
         features["segment_ids"] = create_int_feature(feature.segment_ids)
 
         if self.is_training:
-            features["start_positions"] = create_int_feature([feature.start_position])
-            features["end_positions"] = create_int_feature([feature.end_position])
+            features["start_position"] = create_int_feature([feature.start_position])
+            features["end_position"] = create_int_feature([feature.end_position])
             impossible = 0
             if feature.is_impossible:
                 impossible = 1
@@ -384,6 +384,9 @@ def convert_examples_to_features(
             output_fn(feature)
 
             unique_id += 1
+
+        if (example_index + 1) % 1000 == 0:
+            print(example_index + 1)
 
     return unique_id - base_id
 
@@ -744,20 +747,44 @@ def _compute_softmax(scores):
     return probs
 
 
+def save_squad_dataset(dataset, path):
+    writer = FeatureWriter(path, is_training=True)
+    _id = 0
+    for data in dataset:
+        feature = InputFeatures(
+            unique_id=_id,
+            example_index=None,
+            doc_span_index=None,
+            tokens=None,
+            token_to_orig_map=None,
+            token_is_max_context=None,
+            input_ids=data[0][0].numpy(),
+            input_mask=data[0][1].numpy(),
+            segment_ids=data[0][2].numpy(),
+            start_position=data[1].numpy(),
+            end_position=data[2].numpy(),
+            is_impossible=False
+        )
+        writer.process_feature(feature)
+
+    writer.close()
+
+
 def generate_tf_record_from_json_file(
         train_file_path,
         eval_file_path,
         vocab_file_path,
         output_dir,
+        output_prefix='',
         max_seq_length=384,
         do_lower_case=True,
         max_query_length=64,
         doc_stride=128,
         version_2_with_negative=False
 ):
-    train_file_output_path = os.path.join(output_dir, 'train.tfrecord')
+    train_file_output_path = os.path.join(output_dir, output_prefix + '_' + 'all.tfrecord')
     # eval_file_output_path = os.path.join(output_dir, 'eval.tfrecord')
-    train_meta_data_output_path = os.path.join(output_dir, 'train_meta_data.json')
+    train_meta_data_output_path = os.path.join(output_dir, output_prefix + '_' + 'all_meta_data.json')
     # eval_meta_data_output_path = os.path.join(output_dir, 'eval_meta_data.json')
     train_examples = read_squad_examples(
         input_file=train_file_path,
@@ -833,5 +860,11 @@ if __name__ == '__main__':
         train_file_path='datasets/preprocessed_datasets/qa_examples.json',
         eval_file_path=None,
         vocab_file_path='./vocab.txt',
-        output_dir='./squad_output'
+        output_dir='./datasets/tfrecord_datasets',
+        output_prefix='mrc',
+        max_seq_length=248,
+        do_lower_case=True,
+        max_query_length=32,
+        doc_stride=128,
+        version_2_with_negative=False
     )

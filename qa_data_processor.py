@@ -13,8 +13,6 @@ from utils import get_label_to_id_map
 from squad_processor import read_squad_examples
 
 relation_questions_txt_path = 'datasets/raw_datasets/relation_questions.txt'
-tfrecord_save_path = './datasets/relation_qas.tfrecord'
-desc_json_save_path = './datasets/relation_qas_desc.json'
 vocab_filepath = './vocab.txt'
 qa_examples_save_path = 'datasets/preprocessed_datasets/qa_examples.json'
 cls_examples_save_path = 'datasets/preprocessed_datasets/cls_examples.json'
@@ -56,6 +54,13 @@ def load_relation_questions_txt(filepath=relation_questions_txt_path):
 
 
 def extract_examples_from_init_train():
+    """
+        Init Train Example
+        {
+            'text': '',
+            relations: [{'subject': '', 'relation': '', 'object': ''}]
+        }
+    """
     init_train = load_init_train_txt()
     examples = []
     for item in init_train:
@@ -76,10 +81,22 @@ def extract_examples_from_init_train():
 
 
 def extract_examples_from_relation_questions():
+    """
+        Relation Questions Example
+        {
+            'relation_id': '',
+            'relation_name': '',
+            'relation_question_a': '',
+            'relation_question_b': '',
+            'relation_question_c': ''
+        }
+    """
     relation_questions = load_relation_questions_txt()
     _, relations, _, _ = extract_relations_from_init_train_table()
     relation_to_id_map = get_label_to_id_map(relations)
 
+    # 一个 relation 对应一个 dict
+    # 理论上应该有 53 个 relation 对应 53 个 dict
     relation_questions_dict = collections.OrderedDict()
     for index in range(0, len(relations)):
         cur_index = index * 5
@@ -113,12 +130,14 @@ def convert_example_to_squad_json_format(
     init_train_examples = extract_examples_from_init_train()
     relation_questions_dict = extract_examples_from_relation_questions()
 
+    # 存储用于分类的数据
     cls_examples = []
 
+    # 存储用于阅读理解的数据
     squad_json = {
         'data': [
             {
-                'title': '',
+                'title': 'temp title',
                 'paragraphs': []
             }
         ]
@@ -151,6 +170,7 @@ def convert_example_to_squad_json_format(
             )
 
             # to squad json format
+            # question 1, for mrc
             qas_item = {
                 'question': relation_question_a,
                 'answers': [
@@ -164,6 +184,7 @@ def convert_example_to_squad_json_format(
             squad_json_item['qas'].append(qas_item)
             _id += 1
 
+            # question 2, for mrc
             qas_item = {
                 'question': relation_question_b,
                 'answers': [
@@ -189,12 +210,18 @@ def convert_example_to_squad_json_format(
 
             # TODO 考虑根据当前正样本随机加入一些负样本
 
+            # logging info
+            if _id % 1000 == 0:
+                print(_id)
+
+    # 将 mrc 数据写入 json 文件
     with tf.io.gfile.GFile(qa_examples_path, 'w') as writer:
-        writer.write(json.dumps(squad_json, ensure_ascii=False, indent=4))
+        writer.write(json.dumps(squad_json, ensure_ascii=False, indent=2))
     writer.close()
 
+    # 将 cls 数据写入 json 文件
     with tf.io.gfile.GFile(cls_examples_path, 'w') as writer:
-        writer.write(json.dumps(cls_examples, ensure_ascii=False, indent=4))
+        writer.write(json.dumps(cls_examples, ensure_ascii=False, indent=2))
     writer.close()
 
 

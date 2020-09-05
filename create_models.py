@@ -2,6 +2,7 @@
 
 import tensorflow as tf
 from transformers import BertConfig, TFBertModel
+from custom_losses import squad_loss_fn
 
 
 def create_cls_model(num_labels, is_train=True, use_pretrain=False):
@@ -21,7 +22,7 @@ def create_cls_model(num_labels, is_train=True, use_pretrain=False):
     # (batch_size, hidden_size)
     pooled_output = bert_output[1]
     if is_train:
-        pooled_output = tf.nn.dropout(pooled_output, rate=0.1)
+        pooled_output = tf.keras.layers.Dropout(rate=0.1)(pooled_output)
 
     # (batch_size, num_labels)
     pred = tf.keras.layers.Dense(num_labels, activation='sigmoid')(pooled_output)
@@ -34,40 +35,40 @@ def create_cls_model(num_labels, is_train=True, use_pretrain=False):
 
 
 def create_mrc_model(is_train=True, use_pretrain=False):
+
+    # 输入
     inputs_ids = tf.keras.Input((None,), name='inputs_ids', dtype=tf.int64)
     inputs_mask = tf.keras.Input((None,), name='inputs_mask', dtype=tf.int64)
     segment_ids = tf.keras.Input((None,), name='segment_ids', dtype=tf.int64)
-    start_position = tf.keras.Input((None,), name='start_position', dtype=tf.int64)
-    end_position = tf.keras.Input((None,), name='end_position', dtype=tf.int64)
+
+    # 用于计算 loss
 
     if use_pretrain:
+        # TODO: 使用全局变量或局部变量替换掉这里固定的字符串
         bert_model = TFBertModel.from_pretrained('bert-base-chinese')
     else:
+        # 不加载预训练模型，一般在本机测试使用
+        # TODO: 使用全局变量或局部变量替换掉这里固定的字符串
         bert_config = BertConfig.from_json_file('./config/bert-base-chinese-config.json')
         bert_model = TFBertModel(bert_config)
 
-    bert_output = bert_model([inputs_ids, inputs_mask, segment_ids], train=is_train)
+    bert_output = bert_model([inputs_ids, inputs_mask, segment_ids], training=is_train)
 
     # (batch_size, seq_len, hidden_size)
-    pooled_output = bert_output[1]
+    embedding = bert_output[0]
 
-    if is_train:
-        pooled_output = tf.nn.dropout(pooled_output, rate=0.1)
+    start_logits = tf.keras.layers.Dense(1, name='start_logits', use_bias=False)(embedding)
+    start_logits = tf.keras.layers.Flatten()(start_logits)
 
-    # (batch_size, seq_len, 2)
-    logits = tf.keras.layers.Dense(units=2)
+    end_logits = tf.keras.layers.Dense(1, name='end_logits', use_bias=False)(embedding)
+    end_logits = tf.keras.layers.Flatten()(end_logits)
 
-    # (batch_size, seq_len, 1)
-    start_logits, end_logits = tf.split(logits, 2, axis=-1)
-
-    # (batch_size, seq_len)
-    start_logits = tf.squeeze(start_logits, axis=-1, name='start_logits')
-    end_logits = tf.squeeze(end_logits, axis=-1, name='end_logits')
+    start_probs = tf.keras.layers.Activation(tf.keras.activations.softmax, name='start_pos')(start_logits)
+    end_probs = tf.keras.layers.Activation(tf.keras.activations.softmax, name='end_pos')(end_logits)
 
     model = tf.keras.Model(
-        inputs=[inputs_ids, inputs_mask, segment_ids, start_position, end_position],
-        outputs=[start_logits, end_logits]
+        inputs=[inputs_ids, inputs_mask, segment_ids],
+        outputs=[start_probs, end_probs]
     )
 
     return model
-

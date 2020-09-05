@@ -27,8 +27,8 @@ from data_processor import (
 class ClassifierTask:
 
     def __init__(self, kwargs, use_pretrain=None, batch_size=None, inference_type=None):
-        if use_pretrain is None or batch_size is None:
-            raise ValueError('Param use_pretrain and batch_size must be pass')
+        if use_pretrain is None:
+            raise ValueError('Param use_pretrain must be pass')
         self.batch_size = batch_size
         self.use_pretrain = use_pretrain
         self.inference_type = inference_type

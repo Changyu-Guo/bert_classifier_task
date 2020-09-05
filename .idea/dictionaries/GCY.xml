@@ -4,6 +4,7 @@
       <w>adamw</w>
       <w>ckpt</w>
       <w>logits</w>
+      <w>probs</w>
     </words>
   </dictionary>
 </component>
