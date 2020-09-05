@@ -271,7 +271,7 @@ def main():
     task = MRCTask(
         get_model_params(),
         use_pretrain=True,
-        batch_size=48,
+        batch_size=32,
         inference_type=None
     )
     return task
