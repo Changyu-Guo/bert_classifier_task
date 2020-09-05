@@ -204,11 +204,18 @@ class MRCTask:
             max_seq_len=self.max_seq_len,
             shuffle=True,
             repeat=False,
-            batch_size=128
+            batch_size=1
         )
 
+        RawResult = collections.namedtuple(
+            'RawResult',
+            ['unique_id', 'start_logits', 'end_logits']
+        )
+        all_results = []
         for data in dataset:
-            pass
+            result = model.predict(data)
+            print(result)
+            break
 
 
 # Global Variables #####

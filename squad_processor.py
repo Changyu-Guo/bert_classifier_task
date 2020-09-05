@@ -803,7 +803,7 @@ def generate_tf_record_from_json_file(
     )
 
     train_writer = FeatureWriter(filename=train_file_output_path, is_training=True)
-    eval_writer = FeatureWriter(filename=eval_file_output_path, is_training=False)
+    eval_writer = FeatureWriter(filename=eval_file_output_path, is_training=True)
 
     number_of_train_examples = convert_examples_to_features(
         examples=train_examples,
