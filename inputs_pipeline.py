@@ -82,6 +82,7 @@ def read_and_batch_from_squad_tfrecord(
         filename,
         max_seq_len,
         is_training,
+        repeat=False,
         batch_size=None
 ):
     name_to_features = {
@@ -96,8 +97,10 @@ def read_and_batch_from_squad_tfrecord(
 
     dataset = tf.data.TFRecordDataset(filename)
     if is_training:
-        dataset = dataset.repeat()
         dataset = dataset.shuffle(buffer_size=100)
+
+    if repeat:
+        dataset = dataset.repeat()
 
     def _parse_example(example):
         parsed_example = tf.io.parse_single_example(example, name_to_features)

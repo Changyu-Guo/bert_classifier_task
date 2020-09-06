@@ -105,12 +105,14 @@ class MRCTask:
             filename=self.train_output_file_path,
             max_seq_len=self.max_seq_len,
             is_training=True,
+            repeat=True,
             batch_size=self.batch_size
         )
         valid_dataset = read_and_batch_from_squad_tfrecord(
             filename=self.valid_output_file_path,
             max_seq_len=self.max_seq_len,
             is_training=True,
+            repeat=False,
             batch_size=self.batch_size
         )
 
@@ -311,9 +313,9 @@ def main():
     logging.set_verbosity(logging.INFO)
     task = MRCTask(
         get_model_params(),
-        use_pretrain=True,
+        use_pretrain=False,
         use_prev_record=False,
-        batch_size=32,
+        batch_size=2,
         inference_type=None
     )
     return task
