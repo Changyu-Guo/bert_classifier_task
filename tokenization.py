@@ -5,13 +5,19 @@ import collections
 import unicodedata
 
 import six
-import sentencepiece as spm
 import tensorflow as tf
+import sentencepiece as spm
 
 SPIECE_UNDERLINE = "▁"
 
 
 def validate_case_matches_checkpoint(do_lower_case, init_checkpoint):
+    """Checks whether the casing config is consistent with the checkpoint name."""
+
+    # The casing has to be passed in by the user and there is no explicit check
+    # as to whether it matches the checkpoint. The casing information probably
+    # should have been stored in the bert_config.json file, but it's not, so
+    # we have to heuristically detect it to validate.
 
     if not init_checkpoint:
         return
@@ -56,6 +62,7 @@ def validate_case_matches_checkpoint(do_lower_case, init_checkpoint):
 
 
 def convert_to_unicode(text):
+    """Converts `text` to Unicode (if it's not already), assuming utf-8 input."""
     if six.PY3:
         if isinstance(text, str):
             return text
@@ -75,6 +82,10 @@ def convert_to_unicode(text):
 
 
 def printable_text(text):
+    """Returns text encoded in a way suitable for print or `tf.logging`."""
+
+    # These functions want `str` for both Python2 and Python3, but in one case
+    # it's a Unicode string and in the other it's a byte string.
     if six.PY3:
         if isinstance(text, str):
             return text
@@ -94,6 +105,7 @@ def printable_text(text):
 
 
 def load_vocab(vocab_file):
+    """Loads a vocabulary file into a dictionary."""
     vocab = collections.OrderedDict()
     index = 0
     with tf.io.gfile.GFile(vocab_file, "r") as reader:
@@ -108,6 +120,7 @@ def load_vocab(vocab_file):
 
 
 def convert_by_vocab(vocab, items):
+    """Converts a sequence of [tokens|ids] using the vocab."""
     output = []
     for item in items:
         output.append(vocab[item])
@@ -115,16 +128,15 @@ def convert_by_vocab(vocab, items):
 
 
 def convert_tokens_to_ids(vocab, tokens):
-    # vocab: token -> index dict
     return convert_by_vocab(vocab, tokens)
 
 
 def convert_ids_to_tokens(inv_vocab, ids):
-    # inv_vocab: index -> token dict
     return convert_by_vocab(inv_vocab, ids)
 
 
 def whitespace_tokenize(text):
+    """Runs basic whitespace cleaning and splitting on a piece of text."""
     text = text.strip()
     if not text:
         return []
@@ -133,6 +145,8 @@ def whitespace_tokenize(text):
 
 
 class FullTokenizer(object):
+    """Runs end-to-end tokenziation."""
+
     def __init__(self, vocab_file, do_lower_case=True, split_on_punc=True):
         self.vocab = load_vocab(vocab_file)
         self.inv_vocab = {v: k for k, v in self.vocab.items()}
@@ -156,14 +170,31 @@ class FullTokenizer(object):
 
 
 class BasicTokenizer(object):
+    """Runs basic tokenization (punctuation splitting, lower casing, etc.)."""
+
     def __init__(self, do_lower_case=True, split_on_punc=True):
+        """Constructs a BasicTokenizer.
+
+        Args:
+          do_lower_case: Whether to lower case the input.
+          split_on_punc: Whether to apply split on punctuations. By default BERT
+            starts a new token for punctuations. This makes detokenization difficult
+            for tasks like seq2seq decoding.
+        """
         self.do_lower_case = do_lower_case
         self.split_on_punc = split_on_punc
 
     def tokenize(self, text):
+        """Tokenizes a piece of text."""
         text = convert_to_unicode(text)
         text = self._clean_text(text)
 
+        # This was added on November 1st, 2018 for the multilingual and Chinese
+        # models. This is also applied to the English models now, but it doesn't
+        # matter since the English models were not trained on any Chinese data
+        # and generally don't have any Chinese data in them (there are Chinese
+        # characters in the vocabulary because Wikipedia does have some Chinese
+        # words in the English Wikipedia.).
         text = self._tokenize_chinese_chars(text)
 
         orig_tokens = whitespace_tokenize(text)
@@ -181,6 +212,7 @@ class BasicTokenizer(object):
         return output_tokens
 
     def _run_strip_accents(self, text):
+        """Strips accents from a piece of text."""
         text = unicodedata.normalize("NFD", text)
         output = []
         for char in text:
@@ -191,6 +223,7 @@ class BasicTokenizer(object):
         return "".join(output)
 
     def _run_split_on_punc(self, text):
+        """Splits punctuation on a piece of text."""
         chars = list(text)
         i = 0
         start_new_word = True
@@ -210,6 +243,7 @@ class BasicTokenizer(object):
         return ["".join(x) for x in output]
 
     def _tokenize_chinese_chars(self, text):
+        """Adds whitespace around any CJK character."""
         output = []
         for char in text:
             cp = ord(char)
@@ -222,19 +256,29 @@ class BasicTokenizer(object):
         return "".join(output)
 
     def _is_chinese_char(self, cp):
-        # 中文字符
-        if (
-                (0x4E00 <= cp <= 0x9FFF) or (0x3400 <= cp <= 0x4DBF) or
-                (0x20000 <= cp <= 0x2A6DF) or (0x2A700 <= cp <= 0x2B73F) or
-                (0x2B740 <= cp <= 0x2B81F) or (0x2B820 <= cp <= 0x2CEAF) or
-                (0xF900 <= cp <= 0xFAFF) or (0x2F800 <= cp <= 0x2FA1F)
-        ):
+        """Checks whether CP is the codepoint of a CJK character."""
+        # This defines a "chinese character" as anything in the CJK Unicode block:
+        #   https://en.wikipedia.org/wiki/CJK_Unified_Ideographs_(Unicode_block)
+        #
+        # Note that the CJK Unicode block is NOT all Japanese and Korean characters,
+        # despite its name. The modern Korean Hangul alphabet is a different block,
+        # as is Japanese Hiragana and Katakana. Those alphabets are used to write
+        # space-separated words, so they are not treated specially and handled
+        # like the all of the other languages.
+        if ((0x4E00 <= cp <= 0x9FFF) or  #
+                (0x3400 <= cp <= 0x4DBF) or  #
+                (0x20000 <= cp <= 0x2A6DF) or  #
+                (0x2A700 <= cp <= 0x2B73F) or  #
+                (0x2B740 <= cp <= 0x2B81F) or  #
+                (0x2B820 <= cp <= 0x2CEAF) or
+                (0xF900 <= cp <= 0xFAFF) or  #
+                (0x2F800 <= cp <= 0x2FA1F)):  #
             return True
 
         return False
 
     def _clean_text(self, text):
-        # 清除空格和控制字符
+        """Performs invalid character removal and whitespace cleanup on text."""
         output = []
         for char in text:
             cp = ord(char)
@@ -248,12 +292,31 @@ class BasicTokenizer(object):
 
 
 class WordpieceTokenizer(object):
+    """Runs WordPiece tokenziation."""
+
     def __init__(self, vocab, unk_token="[UNK]", max_input_chars_per_word=400):
         self.vocab = vocab
         self.unk_token = unk_token
         self.max_input_chars_per_word = max_input_chars_per_word
 
     def tokenize(self, text):
+        """Tokenizes a piece of text into its word pieces.
+
+        This uses a greedy longest-match-first algorithm to perform tokenization
+        using the given vocabulary.
+
+        For example:
+          input = "unaffable"
+          output = ["un", "##aff", "##able"]
+
+        Args:
+          text: A single token or whitespace separated tokens. This should have
+            already been passed through `BasicTokenizer.
+
+        Returns:
+          A list of wordpiece tokens.
+        """
+
         text = convert_to_unicode(text)
 
         output_tokens = []
@@ -291,6 +354,9 @@ class WordpieceTokenizer(object):
 
 
 def _is_whitespace(char):
+    """Checks whether `chars` is a whitespace character."""
+    # \t, \n, and \r are technically control characters but we treat them
+    # as whitespace since they are generally considered as such.
     if char == " " or char == "\t" or char == "\n" or char == "\r":
         return True
     cat = unicodedata.category(char)
@@ -300,6 +366,9 @@ def _is_whitespace(char):
 
 
 def _is_control(char):
+    """Checks whether `chars` is a control character."""
+    # These are technically control characters but we count them as whitespace
+    # characters.
     if char == "\t" or char == "\n" or char == "\r":
         return False
     cat = unicodedata.category(char)
@@ -309,11 +378,14 @@ def _is_control(char):
 
 
 def _is_punctuation(char):
+    """Checks whether `chars` is a punctuation character."""
     cp = ord(char)
-    if (
-            (33 <= cp <= 47) or (58 <= cp <= 64) or
-            (91 <= cp <= 96) or (123 <= cp <= 126)
-    ):
+    # We treat all non-letter/number ASCII as punctuation.
+    # Characters such as "^", "$", and "`" are not in the Unicode
+    # Punctuation class but we treat them as punctuation anyways, for
+    # consistency.
+    if ((33 <= cp <= 47) or (58 <= cp <= 64) or
+            (91 <= cp <= 96) or (123 <= cp <= 126)):
         return True
     cat = unicodedata.category(char)
     if cat.startswith("P"):
@@ -322,6 +394,20 @@ def _is_punctuation(char):
 
 
 def preprocess_text(inputs, remove_space=True, lower=False):
+    """Preprocesses data by removing extra space and normalize data.
+
+    This method is used together with sentence piece tokenizer and is forked from:
+    https://github.com/google-research/google-research/blob/master/albert/tokenization.py
+
+    Args:
+      inputs: The input text.
+      remove_space: Whether to remove the extra space.
+      lower: Whether to lowercase the text.
+
+    Returns:
+      The preprocessed text.
+
+    """
     outputs = inputs
     if remove_space:
         outputs = " ".join(inputs.strip().split())
@@ -341,6 +427,21 @@ def preprocess_text(inputs, remove_space=True, lower=False):
 
 
 def encode_pieces(sp_model, text, sample=False):
+    """Segements text into pieces.
+
+    This method is used together with sentence piece tokenizer and is forked from:
+    https://github.com/google-research/google-research/blob/master/albert/tokenization.py
+
+
+    Args:
+      sp_model: A spm.SentencePieceProcessor object.
+      text: The input text to be segemented.
+      sample: Whether to randomly sample a segmentation output or return a
+        deterministic one.
+
+    Returns:
+      A list of token pieces.
+    """
     if six.PY2 and isinstance(text, six.text_type):
         text = six.ensure_binary(text, "utf-8")
 
@@ -368,14 +469,38 @@ def encode_pieces(sp_model, text, sample=False):
 
 
 def encode_ids(sp_model, text, sample=False):
+    """Segments text and return token ids.
+
+    This method is used together with sentence piece tokenizer and is forked from:
+    https://github.com/google-research/google-research/blob/master/albert/tokenization.py
+
+    Args:
+      sp_model: A spm.SentencePieceProcessor object.
+      text: The input text to be segemented.
+      sample: Whether to randomly sample a segmentation output or return a
+        deterministic one.
+
+    Returns:
+      A list of token ids.
+    """
     pieces = encode_pieces(sp_model, text, sample=sample)
     ids = [sp_model.PieceToId(piece) for piece in pieces]
     return ids
 
 
 class FullSentencePieceTokenizer(object):
+    """Runs end-to-end sentence piece tokenization.
+
+    The interface of this class is intended to keep the same as above
+    `FullTokenizer` class for easier usage.
+    """
 
     def __init__(self, sp_model_file):
+        """Inits FullSentencePieceTokenizer.
+
+        Args:
+          sp_model_file: The path to the sentence piece model file.
+        """
         self.sp_model = spm.SentencePieceProcessor()
         self.sp_model.Load(sp_model_file)
         self.vocab = {
@@ -384,10 +509,13 @@ class FullSentencePieceTokenizer(object):
         }
 
     def tokenize(self, text):
+        """Tokenizes text into pieces."""
         return encode_pieces(self.sp_model, text)
 
     def convert_tokens_to_ids(self, tokens):
+        """Converts a list of tokens to a list of ids."""
         return [self.sp_model.PieceToId(printable_text(token)) for token in tokens]
 
     def convert_ids_to_tokens(self, ids):
+        """Converts a list of ids ot a list of tokens."""
         return [self.sp_model.IdToPiece(id_) for id_ in ids]

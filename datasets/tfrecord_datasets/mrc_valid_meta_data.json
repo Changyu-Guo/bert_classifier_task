@@ -1,8 +1,0 @@
-{
-  "task_type": "bert_squad_eval",
-  "eval_data_size": 3228,
-  "max_seq_length": 248,
-  "max_query_length": 32,
-  "doc_stride": 128,
-  "version_2_with_negative": false
-}

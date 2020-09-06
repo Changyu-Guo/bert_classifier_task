@@ -65,13 +65,12 @@ def create_mrc_model(is_train=True, use_pretrain=False):
     end_logits = tf.keras.layers.Dense(1, name='end_logits', use_bias=False)(embedding)
     end_logits = tf.keras.layers.Flatten()(end_logits)
 
-    # (batch_size, 1)
-    start_probs = tf.keras.layers.Activation(tf.keras.activations.softmax, name='start_pos')(start_logits)
-    end_probs = tf.keras.layers.Activation(tf.keras.activations.softmax, name='end_pos')(end_logits)
-
     model = tf.keras.Model(
         inputs=[inputs_ids, inputs_mask, segment_ids],
-        outputs=[start_probs, end_probs]
+        outputs={
+            'start_logits': start_logits,
+            'end_logits': end_logits
+        }
     )
 
     return model

@@ -78,50 +78,33 @@ def split_dataset(dataset, valid_ratio, total_features=None):
     return train_dataset, test_dataset
 
 
-def save_dataset(dataset, path):
-    writer = FeaturesWriter(path)
-    for data in dataset:
-        feature = Feature(
-            inputs_ids=data[0][0].numpy(),
-            inputs_mask=data[0][1].numpy(),
-            segment_ids=data[0][2].numpy(),
-        )
-        writer.process_feature(feature)
-
-    writer.close()
-
-
 def read_and_batch_from_squad_tfrecord(
-        filename, max_seq_len, shuffle=True,
-        repeat=True, batch_size=None):
+        filename,
+        max_seq_len,
+        is_training,
+        batch_size=None
+):
+    name_to_features = {
+        'unique_ids': tf.io.FixedLenFeature([], tf.int64),
+        'input_ids': tf.io.FixedLenFeature([max_seq_len], tf.int64),
+        'input_mask': tf.io.FixedLenFeature([max_seq_len], tf.int64),
+        'segment_ids': tf.io.FixedLenFeature([max_seq_len], tf.int64)
+    }
+    if is_training:
+        name_to_features['start_positions'] = tf.io.FixedLenFeature([], tf.int64)
+        name_to_features['end_positions'] = tf.io.FixedLenFeature([], tf.int64)
+
     dataset = tf.data.TFRecordDataset(filename)
+    if is_training:
+        dataset = dataset.repeat()
+        dataset = dataset.shuffle(buffer_size=100)
 
     def _parse_example(example):
-        name_to_features = {
-            'inputs_ids': tf.io.FixedLenFeature([max_seq_len], tf.int64),
-            'inputs_mask': tf.io.FixedLenFeature([max_seq_len], tf.int64),
-            'segment_ids': tf.io.FixedLenFeature([max_seq_len], tf.int64),
-            'start_position': tf.io.FixedLenFeature([], tf.int64),
-            'end_position': tf.io.FixedLenFeature([], tf.int64)
-        }
-
         parsed_example = tf.io.parse_single_example(example, name_to_features)
 
-        inputs_ids = parsed_example['inputs_ids']
-        inputs_mask = parsed_example['inputs_mask']
-        segment_ids = parsed_example['segment_ids']
-        start_position = parsed_example['start_position']
-        end_position = parsed_example['end_position']
-
-        return (inputs_ids, inputs_mask, segment_ids), (start_position, end_position)
+        return parsed_example
 
     dataset = dataset.map(_parse_example, num_parallel_calls=tf.data.experimental.AUTOTUNE)
-
-    if shuffle:
-        dataset = dataset.shuffle(2020)
-
-    if repeat:
-        dataset = dataset.repeat()
 
     if batch_size:
         dataset = dataset.batch(batch_size)
@@ -131,15 +114,8 @@ def read_and_batch_from_squad_tfrecord(
     return dataset
 
 
-if __name__ == '__main__':
-    dataset = read_and_batch_from_squad_tfrecord(
-        'datasets/tfrecord_datasets/mrc_all.tfrecord',
-        max_seq_len=384,
-        shuffle=True,
-        repeat=False,
-        batch_size=1
+def map_data_to_mrc_task(data):
+    return (
+        (data['input_ids'], data['input_mask'], data['segment_ids']),
+        data['start_positions'], data['end_positions']
     )
-
-    for data in dataset:
-        print(data)
-        break

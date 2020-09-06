@@ -9,20 +9,34 @@ import collections
 import six
 import tensorflow as tf
 from absl import logging
-import tokenization as bert_tokenization
+import tokenization
 
 
 class SquadExample(object):
-    def __init__(
-            self,
-            qas_id,
-            question_text,
-            doc_tokens,  # white space tokenize
-            orig_answer_text=None,
-            start_position=None,
-            end_position=None,
-            is_impossible=False
-    ):
+    """A single training/test example for simple sequence classification.
+
+    For examples without an answer, the start and end position are -1.
+
+    Attributes:
+      qas_id: ID of the question-answer pair.
+      question_text: Original text for the question.
+      doc_tokens: The list of tokens in the context obtained by splitting on
+        whitespace only.
+      orig_answer_text: Original text for the answer.
+      start_position: Starting index of the answer in `doc_tokens`.
+      end_position: Ending index of the answer in `doc_tokens`.
+      is_impossible: Whether the question is impossible to answer given the
+        context. Only used in SQuAD 2.0.
+    """
+
+    def __init__(self,
+                 qas_id,
+                 question_text,
+                 doc_tokens,
+                 orig_answer_text=None,
+                 start_position=None,
+                 end_position=None,
+                 is_impossible=False):
         self.qas_id = qas_id
         self.question_text = question_text
         self.doc_tokens = doc_tokens
@@ -36,35 +50,35 @@ class SquadExample(object):
 
     def __repr__(self):
         s = ""
-        s += "qas_id: %s" % (bert_tokenization.printable_text(self.qas_id))
+        s += "qas_id: %s" % (tokenization.printable_text(self.qas_id))
         s += ", question_text: %s" % (
-            bert_tokenization.printable_text(self.question_text))
+            tokenization.printable_text(self.question_text))
         s += ", doc_tokens: [%s]" % (" ".join(self.doc_tokens))
         if self.start_position:
-            s += ", start_position: %d" % self.start_position
+            s += ", start_position: %d" % (self.start_position)
         if self.start_position:
-            s += ", end_position: %d" % self.end_position
+            s += ", end_position: %d" % (self.end_position)
         if self.start_position:
-            s += ", is_impossible: %r" % self.is_impossible
+            s += ", is_impossible: %r" % (self.is_impossible)
         return s
 
 
 class InputFeatures(object):
-    def __init__(
-            self,
-            unique_id,
-            example_index,
-            doc_span_index,
-            tokens,  # word piece tokenize
-            token_to_orig_map,  # word piece token -> white space token
-            token_is_max_context,
-            input_ids,
-            input_mask,
-            segment_ids,
-            start_position=None,  # index in input_ids
-            end_position=None,  # index in input_ids
-            is_impossible=None
-    ):
+    """A single set of features of data."""
+
+    def __init__(self,
+                 unique_id,
+                 example_index,
+                 doc_span_index,
+                 tokens,
+                 token_to_orig_map,
+                 token_is_max_context,
+                 input_ids,
+                 input_mask,
+                 segment_ids,
+                 start_position=None,
+                 end_position=None,
+                 is_impossible=None):
         self.unique_id = unique_id
         self.example_index = example_index
         self.doc_span_index = doc_span_index
@@ -79,7 +93,9 @@ class InputFeatures(object):
         self.is_impossible = is_impossible
 
 
-class FeatureWriter:
+class FeatureWriter(object):
+    """Writes InputFeature to TF example file."""
+
     def __init__(self, filename, is_training):
         self.filename = filename
         self.is_training = is_training
@@ -88,6 +104,7 @@ class FeatureWriter:
         self._writer = tf.io.TFRecordWriter(filename)
 
     def process_feature(self, feature):
+        """Write a InputFeature to the TFRecordWriter as a tf.train.Example."""
         self.num_features += 1
 
         def create_int_feature(values):
@@ -97,13 +114,13 @@ class FeatureWriter:
 
         features = collections.OrderedDict()
         features["unique_ids"] = create_int_feature([feature.unique_id])
-        features["inputs_ids"] = create_int_feature(feature.input_ids)
-        features["inputs_mask"] = create_int_feature(feature.input_mask)
+        features["input_ids"] = create_int_feature(feature.input_ids)
+        features["input_mask"] = create_int_feature(feature.input_mask)
         features["segment_ids"] = create_int_feature(feature.segment_ids)
 
         if self.is_training:
-            features["start_position"] = create_int_feature([feature.start_position])
-            features["end_position"] = create_int_feature([feature.end_position])
+            features["start_positions"] = create_int_feature([feature.start_position])
+            features["end_positions"] = create_int_feature([feature.end_position])
             impossible = 0
             if feature.is_impossible:
                 impossible = 1
@@ -117,6 +134,7 @@ class FeatureWriter:
 
 
 def read_squad_examples(input_file, is_training, version_2_with_negative):
+    """Read a SQuAD json file into a list of SquadExample."""
     with tf.io.gfile.GFile(input_file, "r") as reader:
         input_data = json.load(reader)["data"]
 
@@ -128,14 +146,6 @@ def read_squad_examples(input_file, is_training, version_2_with_negative):
     examples = []
     for entry in input_data:
         for paragraph in entry["paragraphs"]:
-
-            # 对于每一个 context
-            # 都要将其转换为 doc_tokens
-            # 以便于后面构建 start_position 和 end_position
-            # 在转换的过程中要记录 context 中每个字符的位置对应到 doc_tokens 中的 index
-            # 由于原始数据集中提供的答案位置是在上下文中的字符位置
-            # 则可以根据记录到的对应位置确定答案在 doc_tokens 中的位置
-            # 即可以得到 start_position 和 end_position
             paragraph_text = paragraph["context"]
             doc_tokens = []
             char_to_word_offset = []
@@ -149,12 +159,8 @@ def read_squad_examples(input_file, is_training, version_2_with_negative):
                     else:
                         doc_tokens[-1] += c
                     prev_is_whitespace = False
-
-                # 不管是不是空格都应该 append
-                # 以保证对应位置不会出错
                 char_to_word_offset.append(len(doc_tokens) - 1)
 
-            # 抽取当前上下文对应的问题和答案
             for qa in paragraph["qas"]:
                 qas_id = qa["id"]
                 question_text = qa["question"]
@@ -174,22 +180,19 @@ def read_squad_examples(input_file, is_training, version_2_with_negative):
                         orig_answer_text = answer["text"]
                         answer_offset = answer["answer_start"]
                         answer_length = len(orig_answer_text)
-
-                        # 根据之前的记录确认答案在 doc_tokens 中的起始位置
                         start_position = char_to_word_offset[answer_offset]
-                        end_position = char_to_word_offset[answer_offset + answer_length - 1]
-
-                        # doc_tokens 中的字符组成的答案
-                        actual_text = " ".join(
-                            doc_tokens[start_position:(end_position + 1)])
-
-                        # 真正的答案
+                        end_position = char_to_word_offset[answer_offset + answer_length -
+                                                           1]
+                        # Only add answers where the text can be exactly recovered from the
+                        # document. If this CAN'T happen it's likely due to weird Unicode
+                        # stuff so we will just skip the example.
+                        #
+                        # Note that this means for training mode, every example is NOT
+                        # guaranteed to be preserved.
+                        actual_text = " ".join(doc_tokens[start_position:(end_position +
+                                                                          1)])
                         cleaned_answer_text = " ".join(
-                            bert_tokenization.whitespace_tokenize(orig_answer_text))
-
-                        # 如果答案不包含在 doc_tokens 中的答案中
-                        # 则在训练的过程中一定会存在偏差
-                        # 则舍弃这一条数据
+                            tokenization.whitespace_tokenize(orig_answer_text))
                         if actual_text.find(cleaned_answer_text) == -1:
                             logging.warning("Could not find answer: '%s' vs. '%s'",
                                             actual_text, cleaned_answer_text)
@@ -212,28 +215,28 @@ def read_squad_examples(input_file, is_training, version_2_with_negative):
     return examples
 
 
-def convert_examples_to_features(
-        examples,
-        tokenizer,
-        max_seq_length,
-        doc_stride,
-        max_query_length,
-        is_training,
-        output_fn
-):
+def convert_examples_to_features(examples,
+                                 tokenizer,
+                                 max_seq_length,
+                                 doc_stride,
+                                 max_query_length,
+                                 is_training,
+                                 output_fn,
+                                 batch_size=None):
+    """Loads a data file into a list of `InputBatch`s."""
+
     base_id = 1000000000
     unique_id = base_id
+    feature = None
     for (example_index, example) in enumerate(examples):
         query_tokens = tokenizer.tokenize(example.question_text)
 
         if len(query_tokens) > max_query_length:
             query_tokens = query_tokens[0:max_query_length]
 
-        # 使用 word piece 进行更细粒度的分词
-        # 因为仅仅使用 white space 分词得到的答案不精确
-        tok_to_orig_index = []  # tokens -> doc_tokens
-        orig_to_tok_index = []  # doc_tokens -> tokens (只能对应到 tokens 中 token 的开始位置)
-        all_doc_tokens = []  # word piece 分词得到的 tokens
+        tok_to_orig_index = []
+        orig_to_tok_index = []
+        all_doc_tokens = []
         for (i, token) in enumerate(example.doc_tokens):
             orig_to_tok_index.append(len(all_doc_tokens))
             sub_tokens = tokenizer.tokenize(token)
@@ -241,7 +244,6 @@ def convert_examples_to_features(
                 tok_to_orig_index.append(i)
                 all_doc_tokens.append(sub_token)
 
-        # 确定答案在 tokens 中的 position
         tok_start_position = None
         tok_end_position = None
         if is_training and example.is_impossible:
@@ -257,19 +259,18 @@ def convert_examples_to_features(
                 all_doc_tokens, tok_start_position, tok_end_position, tokenizer,
                 example.orig_answer_text)
 
-        # [CLS], [SEP], [SEP]
+        # The -3 accounts for [CLS], [SEP] and [SEP]
         max_tokens_for_doc = max_seq_length - len(query_tokens) - 3
 
-        _DocSpan = collections.namedtuple(
+        # We can have documents that are longer than the maximum sequence length.
+        # To deal with this we do a sliding window approach, where we take chunks
+        # of the up to our max length with a stride of `doc_stride`.
+        _DocSpan = collections.namedtuple(  # pylint: disable=invalid-name
             "DocSpan", ["start", "length"])
-
-        # 使用开始位置和 span 的长度记录了所有的 span
         doc_spans = []
         start_offset = 0
         while start_offset < len(all_doc_tokens):
             length = len(all_doc_tokens) - start_offset
-
-            # 截断
             if length > max_tokens_for_doc:
                 length = max_tokens_for_doc
             doc_spans.append(_DocSpan(start=start_offset, length=length))
@@ -277,7 +278,6 @@ def convert_examples_to_features(
                 break
             start_offset += min(length, doc_stride)
 
-        # 将问题和每一个上下文片段构造成一个样本
         for (doc_span_index, doc_span) in enumerate(doc_spans):
             tokens = []
             token_to_orig_map = {}
@@ -305,8 +305,11 @@ def convert_examples_to_features(
 
             input_ids = tokenizer.convert_tokens_to_ids(tokens)
 
+            # The mask has 1 for real tokens and 0 for padding tokens. Only real
+            # tokens are attended to.
             input_mask = [1] * len(input_ids)
 
+            # Zero-pad up to the sequence length.
             while len(input_ids) < max_seq_length:
                 input_ids.append(0)
                 input_mask.append(0)
@@ -316,10 +319,11 @@ def convert_examples_to_features(
             assert len(input_mask) == max_seq_length
             assert len(segment_ids) == max_seq_length
 
-            # 确定答案在 doc_span 中的位置
             start_position = None
             end_position = None
             if is_training and not example.is_impossible:
+                # For training, if our document chunk does not contain an annotation
+                # we throw it out, since there is nothing to predict.
                 doc_start = doc_span.start
                 doc_end = doc_span.start + doc_span.length - 1
                 out_of_span = False
@@ -338,13 +342,13 @@ def convert_examples_to_features(
                 start_position = 0
                 end_position = 0
 
-            if example_index < 2:
+            if example_index < 20:
                 logging.info("*** Example ***")
-                logging.info("unique_id: %s", unique_id)
-                logging.info("example_index: %s", example_index)
-                logging.info("doc_span_index: %s", doc_span_index)
+                logging.info("unique_id: %s", (unique_id))
+                logging.info("example_index: %s", (example_index))
+                logging.info("doc_span_index: %s", (doc_span_index))
                 logging.info("tokens: %s",
-                             " ".join([bert_tokenization.printable_text(x) for x in tokens]))
+                             " ".join([tokenization.printable_text(x) for x in tokens]))
                 logging.info(
                     "token_to_orig_map: %s", " ".join([
                         "%d:%d" % (x, y) for (x, y) in six.iteritems(token_to_orig_map)
@@ -361,9 +365,9 @@ def convert_examples_to_features(
                     logging.info("impossible example")
                 if is_training and not example.is_impossible:
                     answer_text = " ".join(tokens[start_position:(end_position + 1)])
-                    logging.info("start_position: %d", start_position)
-                    logging.info("end_position: %d", end_position)
-                    logging.info("answer: %s", bert_tokenization.printable_text(answer_text))
+                    logging.info("start_position: %d", (start_position))
+                    logging.info("end_position: %d", (end_position))
+                    logging.info("answer: %s", tokenization.printable_text(answer_text))
 
             feature = InputFeatures(
                 unique_id=unique_id,
@@ -377,39 +381,90 @@ def convert_examples_to_features(
                 segment_ids=segment_ids,
                 start_position=start_position,
                 end_position=end_position,
-                is_impossible=example.is_impossible
-            )
+                is_impossible=example.is_impossible)
 
             # Run callback
-            output_fn(feature)
+            if is_training:
+                output_fn(feature)
+            else:
+                output_fn(feature, is_padding=False)
 
             unique_id += 1
 
-        if (example_index + 1) % 1000 == 0:
-            print(example_index + 1)
+    if not is_training and feature:
+        assert batch_size
+        num_padding = 0
+        num_examples = unique_id - base_id
+        if unique_id % batch_size != 0:
+            num_padding = batch_size - (num_examples % batch_size)
+        logging.info("Adding padding examples to make sure no partial batch.")
+        logging.info("Adds %d padding examples for inference.", num_padding)
+        dummy_feature = copy.deepcopy(feature)
+        for _ in range(num_padding):
+            dummy_feature.unique_id = unique_id
 
+            # Run callback
+            output_fn(feature, is_padding=True)
+            unique_id += 1
     return unique_id - base_id
 
 
-def _improve_answer_span(
-        doc_tokens,
-        input_start,
-        input_end,
-        tokenizer,
-        orig_answer_text
-):
+def _improve_answer_span(doc_tokens, input_start, input_end, tokenizer,
+                         orig_answer_text):
+    """Returns tokenized answer spans that better match the annotated answer."""
+
+    # The SQuAD annotations are character based. We first project them to
+    # whitespace-tokenized words. But then after WordPiece tokenization, we can
+    # often find a "better match". For example:
+    #
+    #   Question: What year was John Smith born?
+    #   Context: The leader was John Smith (1895-1943).
+    #   Answer: 1895
+    #
+    # The original whitespace-tokenized answer will be "(1895-1943).". However
+    # after tokenization, our tokens will be "( 1895 - 1943 ) .". So we can match
+    # the exact answer, 1895.
+    #
+    # However, this is not always possible. Consider the following:
+    #
+    #   Question: What country is the top exporter of electornics?
+    #   Context: The Japanese electronics industry is the lagest in the world.
+    #   Answer: Japan
+    #
+    # In this case, the annotator chose "Japan" as a character sub-span of
+    # the word "Japanese". Since our WordPiece tokenizer does not split
+    # "Japanese", we just use "Japanese" as the annotation. This is fairly rare
+    # in SQuAD, but does happen.
     tok_answer_text = " ".join(tokenizer.tokenize(orig_answer_text))
 
     for new_start in range(input_start, input_end + 1):
         for new_end in range(input_end, new_start - 1, -1):
             text_span = " ".join(doc_tokens[new_start:(new_end + 1)])
             if text_span == tok_answer_text:
-                return new_start, new_end
+                return (new_start, new_end)
 
-    return input_start, input_end
+    return (input_start, input_end)
 
 
 def _check_is_max_context(doc_spans, cur_span_index, position):
+    """Check if this is the 'max context' doc span for the token."""
+
+    # Because of the sliding window approach taken to scoring documents, a single
+    # token can appear in multiple documents. E.g.
+    #  Doc: the man went to the store and bought a gallon of milk
+    #  Span A: the man went to the
+    #  Span B: to the store and bought
+    #  Span C: and bought a gallon of
+    #  ...
+    #
+    # Now the word 'bought' will have two scores from spans B and C. We only
+    # want to consider the score with "maximum context", which we define as
+    # the *minimum* of its left and right context (the *sum* of left and
+    # right context will always be the same, of course).
+    #
+    # In the example the maximum context for 'bought' would be span C since
+    # it has 1 left context and 3 right context, while span B has 4 left context
+    # and 0 right context.
     best_score = None
     best_span_index = None
     for (span_index, doc_span) in enumerate(doc_spans):
@@ -428,36 +483,33 @@ def _check_is_max_context(doc_spans, cur_span_index, position):
     return cur_span_index == best_span_index
 
 
-def write_predictions(
-        all_examples,
-        all_features,
-        all_results,
-        n_best_size,
-        max_answer_length,
-        do_lower_case,
-        output_prediction_file,
-        output_nbest_file,
-        output_null_log_odds_file,
-        version_2_with_negative=False,
-        null_score_diff_threshold=0.0,
-        verbose=False
-):
-    logging.info("Writing predictions to: %s", output_prediction_file)
-    logging.info("Writing nbest to: %s", output_nbest_file)
+def write_predictions(all_examples,
+                      all_features,
+                      all_results,
+                      n_best_size,
+                      max_answer_length,
+                      do_lower_case,
+                      output_prediction_file,
+                      output_nbest_file,
+                      output_null_log_odds_file,
+                      version_2_with_negative=False,
+                      null_score_diff_threshold=0.0,
+                      verbose=False):
+    """Write final predictions to the json file and log-odds of null if needed."""
+    logging.info("Writing predictions to: %s", (output_prediction_file))
+    logging.info("Writing nbest to: %s", (output_nbest_file))
 
     all_predictions, all_nbest_json, scores_diff_json = (
         postprocess_output(
-          all_examples=all_examples,
-          all_features=all_features,
-          all_results=all_results,
-          n_best_size=n_best_size,
-          max_answer_length=max_answer_length,
-          do_lower_case=do_lower_case,
-          version_2_with_negative=version_2_with_negative,
-          null_score_diff_threshold=null_score_diff_threshold,
-          verbose=verbose
-        )
-    )
+            all_examples=all_examples,
+            all_features=all_features,
+            all_results=all_results,
+            n_best_size=n_best_size,
+            max_answer_length=max_answer_length,
+            do_lower_case=do_lower_case,
+            version_2_with_negative=version_2_with_negative,
+            null_score_diff_threshold=null_score_diff_threshold,
+            verbose=verbose))
 
     write_to_json_files(all_predictions, output_prediction_file)
     write_to_json_files(all_nbest_json, output_nbest_file)
@@ -465,17 +517,17 @@ def write_predictions(
         write_to_json_files(scores_diff_json, output_null_log_odds_file)
 
 
-def postprocess_output(
-        all_examples,
-        all_features,
-        all_results,
-        n_best_size,
-        max_answer_length,
-        do_lower_case,
-        version_2_with_negative=False,
-        null_score_diff_threshold=0.0,
-        verbose=False
-):
+def postprocess_output(all_examples,
+                       all_features,
+                       all_results,
+                       n_best_size,
+                       max_answer_length,
+                       do_lower_case,
+                       version_2_with_negative=False,
+                       null_score_diff_threshold=0.0,
+                       verbose=False):
+    """Postprocess model output, to form predicton results."""
+
     example_index_to_features = collections.defaultdict(list)
     for feature in all_features:
         example_index_to_features[feature.example_index].append(feature)
@@ -495,14 +547,16 @@ def postprocess_output(
         features = example_index_to_features[example_index]
 
         prelim_predictions = []
-        score_null = 1000000
-        min_null_feature_index = 0
-        null_start_logit = 0
-        null_end_logit = 0
+        # keep track of the minimum score of null start+end of position 0
+        score_null = 1000000  # large and positive
+        min_null_feature_index = 0  # the paragraph slice with min mull score
+        null_start_logit = 0  # the start logit at the slice with min null score
+        null_end_logit = 0  # the end logit at the slice with min null score
         for (feature_index, feature) in enumerate(features):
             result = unique_id_to_result[feature.unique_id]
             start_indexes = _get_best_indexes(result.start_logits, n_best_size)
             end_indexes = _get_best_indexes(result.end_logits, n_best_size)
+            # if we could have irrelevant answers, get the min score of irrelevant
             if version_2_with_negative:
                 feature_null_score = result.start_logits[0] + result.end_logits[0]
                 if feature_null_score < score_null:
@@ -512,6 +566,9 @@ def postprocess_output(
                     null_end_logit = result.end_logits[0]
             for start_index in start_indexes:
                 for end_index in end_indexes:
+                    # We could hypothetically create invalid predictions, e.g., predict
+                    # that the start of the span is in the question. We throw out all
+                    # invalid predictions.
                     if start_index >= len(feature.tokens):
                         continue
                     if end_index >= len(feature.tokens):
@@ -533,9 +590,7 @@ def postprocess_output(
                             start_index=start_index,
                             end_index=end_index,
                             start_logit=result.start_logits[start_index],
-                            end_logit=result.end_logits[end_index]
-                        )
-                    )
+                            end_logit=result.end_logits[end_index]))
 
         if version_2_with_negative:
             prelim_predictions.append(
@@ -544,9 +599,7 @@ def postprocess_output(
                     start_index=0,
                     end_index=0,
                     start_logit=null_start_logit,
-                    end_logit=null_end_logit
-                )
-            )
+                    end_logit=null_end_logit))
         prelim_predictions = sorted(
             prelim_predictions,
             key=lambda x: (x.start_logit + x.end_logit),
@@ -593,12 +646,15 @@ def postprocess_output(
                     start_logit=pred.start_logit,
                     end_logit=pred.end_logit))
 
+        # if we didn't inlude the empty option in the n-best, inlcude it
         if version_2_with_negative:
             if "" not in seen_predictions:
                 nbest.append(
                     _NbestPrediction(
                         text="", start_logit=null_start_logit,
                         end_logit=null_end_logit))
+        # In very rare edge cases we could have no valid predictions. So we
+        # just create a nonce prediction in this case to avoid failure.
         if not nbest:
             nbest.append(
                 _NbestPrediction(text="empty", start_logit=0.0, end_logit=0.0))
@@ -629,6 +685,8 @@ def postprocess_output(
         if not version_2_with_negative:
             all_predictions[example.qas_id] = nbest_json[0]["text"]
         else:
+            # pytype: disable=attribute-error
+            # predict "" iff the null score - the score of best non-null > threshold
             if best_non_null_entry is not None:
                 score_diff = score_null - best_non_null_entry.start_logit - (
                     best_non_null_entry.end_logit)
@@ -641,6 +699,7 @@ def postprocess_output(
                 logging.warning("best_non_null_entry is None")
                 scores_diff_json[example.qas_id] = score_null
                 all_predictions[example.qas_id] = ""
+            # pytype: enable=attribute-error
 
         all_nbest_json[example.qas_id] = nbest_json
 
@@ -653,6 +712,33 @@ def write_to_json_files(json_records, json_file):
 
 
 def get_final_text(pred_text, orig_text, do_lower_case, verbose=False):
+    """Project the tokenized prediction back to the original text."""
+
+    # When we created the data, we kept track of the alignment between original
+    # (whitespace tokenized) tokens and our WordPiece tokenized tokens. So
+    # now `orig_text` contains the span of our original text corresponding to the
+    # span that we predicted.
+    #
+    # However, `orig_text` may contain extra characters that we don't want in
+    # our prediction.
+    #
+    # For example, let's say:
+    #   pred_text = steve smith
+    #   orig_text = Steve Smith's
+    #
+    # We don't want to return `orig_text` because it contains the extra "'s".
+    #
+    # We don't want to return `pred_text` because it's already been normalized
+    # (the SQuAD eval script also does punctuation stripping/lower casing but
+    # our tokenizer does additional normalization like stripping accent
+    # characters).
+    #
+    # What we really want to return is "Steve Smith".
+    #
+    # Therefore, we have to apply a semi-complicated alignment heruistic between
+    # `pred_text` and `orig_text` to get a character-to-charcter alignment. This
+    # can fail in certain cases in which case we just return `orig_text`.
+
     def _strip_spaces(text):
         ns_chars = []
         ns_to_s_map = collections.OrderedDict()
@@ -662,9 +748,13 @@ def get_final_text(pred_text, orig_text, do_lower_case, verbose=False):
             ns_to_s_map[len(ns_chars)] = i
             ns_chars.append(c)
         ns_text = "".join(ns_chars)
-        return ns_text, ns_to_s_map
+        return (ns_text, ns_to_s_map)
 
-    tokenizer = bert_tokenization.BasicTokenizer(do_lower_case=do_lower_case)
+    # We first tokenize `orig_text`, strip whitespace from the result
+    # and `pred_text`, and check if they are the same length. If they are
+    # NOT the same length, the heuristic has failed. If they are the same
+    # length, we assume the characters are one-to-one aligned.
+    tokenizer = tokenization.BasicTokenizer(do_lower_case=do_lower_case)
 
     tok_text = " ".join(tokenizer.tokenize(orig_text))
 
@@ -684,6 +774,8 @@ def get_final_text(pred_text, orig_text, do_lower_case, verbose=False):
                          orig_ns_text, tok_ns_text)
         return orig_text
 
+    # We then project the characters in `pred_text` back to `orig_text` using
+    # the character-to-character alignment.
     tok_s_to_ns_map = {}
     for (i, tok_index) in six.iteritems(tok_ns_to_s_map):
         tok_s_to_ns_map[tok_index] = i
@@ -715,10 +807,11 @@ def get_final_text(pred_text, orig_text, do_lower_case, verbose=False):
 
 
 def _get_best_indexes(logits, n_best_size):
+    """Get the n-best logits from a list."""
     index_and_score = sorted(enumerate(logits), key=lambda x: x[1], reverse=True)
 
     best_indexes = []
-    for i in range(len(index_and_score)):
+    for i in range(len(index_and_score)):  # pylint: disable=consider-using-enumerate
         if i >= n_best_size:
             break
         best_indexes.append(index_and_score[i][0])
@@ -726,6 +819,7 @@ def _get_best_indexes(logits, n_best_size):
 
 
 def _compute_softmax(scores):
+    """Compute softmax probability over raw logits."""
     if not scores:
         return []
 
@@ -747,124 +841,109 @@ def _compute_softmax(scores):
     return probs
 
 
-def save_squad_dataset(dataset, path):
-    writer = FeatureWriter(path, is_training=True)
-    _id = 0
-    for data in dataset:
-        feature = InputFeatures(
-            unique_id=_id,
-            example_index=None,
-            doc_span_index=None,
-            tokens=None,
-            token_to_orig_map=None,
-            token_is_max_context=None,
-            input_ids=data[0][0].numpy(),
-            input_mask=data[0][1].numpy(),
-            segment_ids=data[0][2].numpy(),
-            start_position=data[1].numpy(),
-            end_position=data[2].numpy(),
-            is_impossible=False
-        )
-        writer.process_feature(feature)
-
-    writer.close()
-
-
-def generate_tf_record_from_json_file(
-        train_file_path,
-        eval_file_path,
+def generate_train_tf_record_from_json_file(
+        input_file_path,
         vocab_file_path,
-        output_dir,
-        output_prefix='',
+        output_path,
         max_seq_length=384,
         do_lower_case=True,
         max_query_length=64,
         doc_stride=128,
         version_2_with_negative=False
 ):
-    train_file_output_path = os.path.join(output_dir, output_prefix + '_' + 'train.tfrecord')
-    eval_file_output_path = os.path.join(output_dir, output_prefix + '_' + 'valid.tfrecord')
-    train_meta_data_output_path = os.path.join(output_dir, output_prefix + '_' + 'train_meta_data.json')
-    eval_meta_data_output_path = os.path.join(output_dir, output_prefix + '_' + 'valid_meta_data.json')
+    """Generates and saves training data into a tf record file."""
     train_examples = read_squad_examples(
-        input_file=train_file_path,
+        input_file=input_file_path,
         is_training=True,
-        version_2_with_negative=version_2_with_negative
-    )
-    eval_examples = read_squad_examples(
-        input_file=eval_file_path,
-        is_training=True,
-        version_2_with_negative=version_2_with_negative
-    )
-
-    tokenizer = bert_tokenization.FullTokenizer(
-        vocab_file=vocab_file_path,
-        do_lower_case=do_lower_case
-    )
-
-    train_writer = FeatureWriter(filename=train_file_output_path, is_training=True)
-    eval_writer = FeatureWriter(filename=eval_file_output_path, is_training=True)
-
-    number_of_train_examples = convert_examples_to_features(
+        version_2_with_negative=version_2_with_negative)
+    tokenizer = tokenization.FullTokenizer(
+        vocab_file=vocab_file_path, do_lower_case=do_lower_case)
+    train_writer = FeatureWriter(filename=output_path, is_training=True)
+    number_of_examples = convert_examples_to_features(
         examples=train_examples,
         tokenizer=tokenizer,
         max_seq_length=max_seq_length,
         doc_stride=doc_stride,
         max_query_length=max_query_length,
         is_training=True,
-        output_fn=train_writer.process_feature
-    )
+        output_fn=train_writer.process_feature)
     train_writer.close()
 
-    number_of_eval_examples = convert_examples_to_features(
-        examples=eval_examples,
+    meta_data = {
+        "task_type": "bert_squad_train",
+        "train_data_size": number_of_examples,
+        "max_seq_len": max_seq_length,
+        "max_query_len": max_query_length,
+        "doc_stride": doc_stride,
+        "version_2_with_negative": version_2_with_negative,
+    }
+
+    return meta_data
+
+
+def generate_valid_tf_record_from_json_file(
+        input_file_path,
+        vocab_file_path,
+        output_path,
+        max_seq_length=384,
+        do_lower_case=True,
+        max_query_length=64,
+        doc_stride=128,
+        version_2_with_negative=False,
+        batch_size=None,
+        is_training=True
+):
+    valid_examples = read_squad_examples(
+        input_file=input_file_path,
+        is_training=is_training,
+        version_2_with_negative=version_2_with_negative)
+    tokenizer = tokenization.FullTokenizer(
+        vocab_file=vocab_file_path, do_lower_case=do_lower_case)
+    valid_writer = FeatureWriter(filename=output_path, is_training=is_training)
+
+    valid_features = []
+
+    def _append_feature(feature, is_padding):
+        if not is_padding:
+            valid_features.append(feature)
+        valid_writer.process_feature(feature)
+
+    if is_training:
+        output_fn = valid_writer.process_feature
+    else:
+        output_fn = _append_feature
+
+    number_of_examples = convert_examples_to_features(
+        examples=valid_examples,
         tokenizer=tokenizer,
         max_seq_length=max_seq_length,
         doc_stride=doc_stride,
         max_query_length=max_query_length,
-        is_training=True,
-        output_fn=eval_writer.process_feature
+        is_training=is_training,
+        output_fn=output_fn,
+        batch_size=batch_size
     )
-    eval_writer.close()
+    valid_writer.close()
 
-    train_meta_data = {
-        "task_type": "bert_squad_train",
-        "train_data_size": number_of_train_examples,
-        "max_seq_length": max_seq_length,
-        "max_query_length": max_query_length,
-        "doc_stride": doc_stride,
-        "version_2_with_negative": version_2_with_negative,
-    }
-    eval_meta_data = {
-        "task_type": "bert_squad_eval",
-        "eval_data_size": number_of_eval_examples,
-        "max_seq_length": max_seq_length,
-        "max_query_length": max_query_length,
+    meta_data = {
+        "task_type": "bert_squad_valid",
+        "valid_data_size": number_of_examples,
+        "max_seq_len": max_seq_length,
+        "max_query_len": max_query_length,
         "doc_stride": doc_stride,
         "version_2_with_negative": version_2_with_negative,
     }
 
-    with open(train_meta_data_output_path, 'w', encoding='utf-8') as f:
-        f.write(json.dumps(train_meta_data, ensure_ascii=False, indent=2))
-    f.close()
-
-    with open(eval_meta_data_output_path, 'w', encoding='utf-8') as f:
-        f.write(json.dumps(eval_meta_data, ensure_ascii=True, indent=2))
-    f.close()
-
-    return train_meta_data, eval_meta_data
+    return meta_data
 
 
 if __name__ == '__main__':
-    generate_tf_record_from_json_file(
-        train_file_path='datasets/preprocessed_datasets/qa_train_examples.json',
-        eval_file_path='datasets/preprocessed_datasets/qa_valid_examples.json',
-        vocab_file_path='./vocab.txt',
-        output_dir='./datasets/tfrecord_datasets',
-        output_prefix='mrc',
-        max_seq_length=248,
-        do_lower_case=True,
-        max_query_length=32,
-        doc_stride=128,
-        version_2_with_negative=False
-    )
+    vocab_file = 'vocab.txt'
+    train_input_file_path = 'datasets/preprocessed_datasets/mrc_train.json'
+    valid_input_file_path = 'datasets/preprocessed_datasets/mrc_valid.json'
+    train_output_file_path = 'datasets/tfrecord_datasets/mrc_train.tfrecord'
+    valid_output_file_path = 'datasets/tfrecord_datasets/mrc_valid.tfrecord'
+
+    max_seq_len = 200
+    max_query_len = 32
+    doc_stride = 128
