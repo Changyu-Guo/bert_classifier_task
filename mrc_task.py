@@ -12,6 +12,9 @@ from distribu_utils import get_strategy_scope
 from optimization import create_optimizer
 from inputs_pipeline import read_and_batch_from_squad_tfrecord
 from inputs_pipeline import map_data_to_mrc_task
+from squad_processor import FeatureWriter
+from squad_processor import read_squad_examples
+from squad_processor import convert_examples_to_features
 from squad_processor import generate_train_tf_record_from_json_file
 from squad_processor import generate_valid_tf_record_from_json_file
 
@@ -24,14 +27,6 @@ class MRCTask:
         if use_pretrain is None:
             raise ValueError('Param use_pretrain must be passed')
 
-        if use_prev_record and not (
-                kwargs['train_output_file_path'] or kwargs['valid_output_file_path']
-        ):
-            raise ValueError(
-                'Train output file path and valid output file path '
-                'must be set when use prev record is True'
-            )
-
         self.batch_size = batch_size
         self.use_pretrain = use_pretrain
         self.inference_type = inference_type
@@ -40,11 +35,16 @@ class MRCTask:
         self.task_name = kwargs['task_name']
         self.distribution_strategy = kwargs['distribution_strategy']
         self.epochs = kwargs['epochs']
+        self.predict_batch_size = kwargs['predict_batch_size']
 
         self.train_input_file_path = kwargs['train_input_file_path']
         self.valid_input_file_path = kwargs['valid_input_file_path']
         self.train_output_file_path = kwargs['train_output_file_path']
         self.valid_output_file_path = kwargs['valid_output_file_path']
+        self.predict_valid_output_file_path = kwargs['predict_valid_output_file_path']
+        self.train_output_meta_path = kwargs['train_output_meta_path']
+        self.valid_output_meta_path = kwargs['valid_output_meta_path']
+        self.predict_valid_output_meta_path = kwargs['predict_valid_output_meta_path']
 
         self.vocab_file_path = kwargs['vocab_file_path']
 
@@ -68,39 +68,75 @@ class MRCTask:
             self.time_prefix + '_' + self.task_name + '_' + str(self.epochs)
         )
 
+        if use_prev_record:
+            if not (kwargs['train_output_file_path'] or kwargs['valid_output_file_path']):
+                raise ValueError(
+                    'Train output file path and valid output file path '
+                    'must be set when use prev record is True'
+                )
+
+            if not (kwargs['train_output_meta_path'] or kwargs['valid_output_meta_path']):
+                raise ValueError(
+                    'Train output meta path and valid output mata path'
+                    'must be set when use prev record is True'
+                )
+
         self.distribution_strategy = get_distribution_strategy(self.distribution_strategy, num_gpus=1)
 
     def train(self):
         self._ensure_dir_exist(self.model_save_dir)
         self._ensure_dir_exist(self.tensorboard_log_dir)
 
-        self.train_meta_data = generate_train_tf_record_from_json_file(
-            input_file_path=self.train_input_file_path,
-            vocab_file_path=self.vocab_file_path,
-            output_path=self.train_output_file_path,
-            max_seq_length=self.max_seq_len,
-            do_lower_case=True,
-            max_query_length=self.max_query_len,
-            doc_stride=self.doc_stride,
-            version_2_with_negative=False
-        )
+        # convert examples to tfrecord or load
+        if self.use_prev_record:
+
+            with tf.io.gfile.GFile(self.train_output_meta_path, mode='r') as reader:
+                self.train_meta_data = json.load(reader)
+            reader.close()
+
+            with tf.io.gfile.GFile(self.valid_output_meta_path, mode='r') as reader:
+                self.valid_meta_data = json.load(reader)
+            reader.close()
+
+        else:
+
+            self.train_meta_data = generate_train_tf_record_from_json_file(
+                input_file_path=self.train_input_file_path,
+                vocab_file_path=self.vocab_file_path,
+                output_path=self.train_output_file_path,
+                max_seq_length=self.max_seq_len,
+                do_lower_case=True,
+                max_query_length=self.max_query_len,
+                doc_stride=self.doc_stride,
+                version_2_with_negative=False
+            )
+            with tf.io.gfile.GFile(self.train_output_meta_path, mode='w') as writer:
+                writer.write(json.dumps(self.train_meta_data, ensure_ascii=False, indent=2))
+            writer.close()
+
+            self.valid_meta_data = generate_valid_tf_record_from_json_file(
+                input_file_path=self.valid_input_file_path,
+                vocab_file_path=self.vocab_file_path,
+                output_path=self.valid_output_file_path,
+                max_seq_length=self.max_seq_len,
+                do_lower_case=True,
+                max_query_length=self.max_query_len,
+                doc_stride=self.doc_stride,
+                version_2_with_negative=False,
+                batch_size=self.batch_size,
+                is_training=True
+            )
+            with tf.io.gfile.GFile(self.valid_output_meta_path, mode='w') as writer:
+                writer.write(json.dumps(self.valid_meta_data, ensure_ascii=False, indent=2))
+            writer.close()
+
         train_data_size = self.train_meta_data['train_data_size']
+        # for train
         self.steps_per_epoch = int(train_data_size // self.batch_size)
+        # for warmup
         self.total_train_steps = self.steps_per_epoch * self.epochs
 
-        self.valid_meta_data = generate_valid_tf_record_from_json_file(
-            input_file_path=self.valid_input_file_path,
-            vocab_file_path=self.vocab_file_path,
-            output_path=self.valid_output_file_path,
-            max_seq_length=self.max_seq_len,
-            do_lower_case=True,
-            max_query_length=self.max_query_len,
-            doc_stride=self.doc_stride,
-            version_2_with_negative=False,
-            batch_size=self.batch_size,
-            is_training=True
-        )
-
+        # load tfrecord and transform
         train_dataset = read_and_batch_from_squad_tfrecord(
             filename=self.train_output_file_path,
             max_seq_len=self.max_seq_len,
@@ -147,16 +183,14 @@ class MRCTask:
 
             model.compile(
                 optimizer=optimizer,
-                loss={
-                    'start_logits': tf.keras.losses.SparseCategoricalCrossentropy(
-                        from_logits=True,
-                        reduction=tf.keras.losses.Reduction.NONE
+                loss=[
+                    tf.keras.losses.SparseCategoricalCrossentropy(
+                        from_logits=True
                     ),
-                    'end_logits': tf.keras.losses.SparseCategoricalCrossentropy(
-                        from_logits=True,
-                        reduction=tf.keras.losses.Reduction.NONE
+                    tf.keras.losses.SparseCategoricalCrossentropy(
+                        from_logits=True
                     )
-                },
+                ],
                 loss_weights=[0.5, 0.5]
             )
 
@@ -214,33 +248,40 @@ class MRCTask:
 
     def predict_output(self, tokenizer):
         valid_examples = read_squad_examples(
-            input_file='./datasets/preprocessed_datasets/qa_valid_examples.json',
+            input_file=self.train_input_file_path,
             is_training=False,
             version_2_with_negative=False
         )
 
         valid_writer = FeatureWriter(
-            filename=os.path.join('squad_output', 'valid.tf_record'),
+            filename=self.predict_valid_output_file_path,
             is_training=False
         )
 
         valid_features = []
 
-        def _append_feature(feature):
-            valid_features.append(feature)
+        def _append_feature(feature, is_padding):
+            if not is_padding:
+                valid_features.append(feature)
             valid_writer.process_feature(feature)
 
         dataset_size = convert_examples_to_features(
-            valid_examples,
-            tokenizer,
-            self.max_seq_len,
-            self.max_query_len,
+            examples=valid_examples,
+            tokenizer=tokenizer,
+            max_seq_length=self.max_seq_len,
+            doc_stride=self.doc_stride,
+            max_query_length=self.max_query_len,
             is_training=False,
-            output_fn=_append_feature
+            output_fn=_append_feature,
+            batch_size=self.predict_batch_size
         )
         valid_writer.close()
 
         num_steps = int(dataset_size // self.predict_batch_size)
+
+        # predict
+        for data in dataset_size:
+            pass
 
     def get_raw_results(self, predictions):
         RawResult = collections.namedtuple(
@@ -275,12 +316,18 @@ TENSORBOARD_LOG_DIR = './logs/mrc-logs'
 
 TRAIN_OUTPUT_FILE_PATH = 'datasets/tfrecord_datasets/mrc_train.tfrecord'
 VALID_OUTPUT_FILE_PATH = 'datasets/tfrecord_datasets/mrc_valid.tfrecord'
+PREDICT_VALID_OUTPUT_FILE_PATH = 'datasets/tfrecord_datasets/mrc_predict_valid.tfrecord'
+TRAIN_OUTPUT_META_PATH = 'datasets/tfrecord_datasets/mrc_train_meta.json'
+VALID_OUTPUT_META_PATH = 'datasets/tfrecord_datasets/mrc_valid_meta.json'
+PREDICT_VALID_OUTPUT_META_PATH = 'datasets/tfrecord_datasets/mrc_predict_valid_meta.json'
 
 VOCAB_FILE_PATH = 'vocab.txt'
 
 MAX_SEQ_LEN = 200
 MAX_QUERY_LEN = 32
 DOC_STRIDE = 128
+
+PREDICT_BATCH_SIZE = 32
 
 
 def get_model_params():
@@ -290,11 +337,16 @@ def get_model_params():
         task_name=TASK_NAME,
         distribution_strategy='one_device',
         epochs=15,
+        predict_batch_size=PREDICT_BATCH_SIZE,
         model_save_dir=MODEL_SAVE_DIR,
         train_input_file_path=MRC_TRAIN_INPUT_FILE_PATH,
         valid_input_file_path=MRC_VALID_INPUT_FILE_PATH,
         train_output_file_path=TRAIN_OUTPUT_FILE_PATH,
         valid_output_file_path=VALID_OUTPUT_FILE_PATH,
+        predict_valid_output_file_path=PREDICT_VALID_OUTPUT_FILE_PATH,
+        train_output_meta_path=TRAIN_OUTPUT_META_PATH,
+        valid_output_meta_path=VALID_OUTPUT_META_PATH,
+        predict_valid_output_meta_path=PREDICT_VALID_OUTPUT_META_PATH,
         vocab_file_path=VOCAB_FILE_PATH,
         max_seq_len=MAX_SEQ_LEN,
         max_query_len=MAX_QUERY_LEN,

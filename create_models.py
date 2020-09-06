@@ -57,13 +57,14 @@ def create_mrc_model(is_train=True, use_pretrain=False):
     # (batch_size, seq_len, hidden_size)
     embedding = bert_output[0]
 
-    # (batch_size, seq_len, 1)
-    start_logits = tf.keras.layers.Dense(1, use_bias=False)(embedding)
-    # (batch_size, seq_len)
-    start_logits = tf.keras.layers.Flatten(name='start_logits')(start_logits)
+    intermediate_logits = tf.keras.layers.Dense(
+        2,
+        activation='relu',
+        kernel_initializer='glorot_uniform'
+    )(embedding)
 
-    end_logits = tf.keras.layers.Dense(1, use_bias=False)(embedding)
-    end_logits = tf.keras.layers.Flatten(name='end_logits')(end_logits)
+    # (batch_size, seq_len, 1)
+    start_logits, end_logits = tf.keras.layers.Lambda(_split_output_tensor)(intermediate_logits)
 
     model = tf.keras.Model(
         inputs=[inputs_ids, inputs_mask, segment_ids],
@@ -71,3 +72,8 @@ def create_mrc_model(is_train=True, use_pretrain=False):
     )
 
     return model
+
+
+def _split_output_tensor(tensor):
+    transposed_tensor = tf.transpose(tensor, [2, 0, 1])
+    return tf.unstack(transposed_tensor)
