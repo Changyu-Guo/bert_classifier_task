@@ -18,15 +18,24 @@ from squad_processor import generate_valid_tf_record_from_json_file
 
 class MRCTask:
 
-    def __init__(self, kwargs, use_pretrain=None, batch_size=None, inference_type=None):
+    def __init__(self, kwargs, use_pretrain=None, use_prev_record=False, batch_size=None, inference_type=None):
 
         # param check
         if use_pretrain is None:
             raise ValueError('Param use_pretrain must be passed')
 
+        if use_prev_record and not (
+                kwargs['train_output_file_path'] or kwargs['valid_output_file_path']
+        ):
+            raise ValueError(
+                'Train output file path and valid output file path '
+                'must be set when use prev record is True'
+            )
+
         self.batch_size = batch_size
         self.use_pretrain = use_pretrain
         self.inference_type = inference_type
+        self.use_prev_record = use_prev_record
 
         self.task_name = kwargs['task_name']
         self.distribution_strategy = kwargs['distribution_strategy']
@@ -66,31 +75,31 @@ class MRCTask:
         self._ensure_dir_exist(self.tensorboard_log_dir)
 
         self.train_meta_data = generate_train_tf_record_from_json_file(
-            self.train_input_file_path,
-            self.vocab_file_path,
-            self.train_output_file_path,
-            self.max_seq_len,
-            True,
-            self.max_query_len,
-            self.doc_stride,
-            False
+            input_file_path=self.train_input_file_path,
+            vocab_file_path=self.vocab_file_path,
+            output_path=self.train_output_file_path,
+            max_seq_length=self.max_seq_len,
+            do_lower_case=True,
+            max_query_length=self.max_query_len,
+            doc_stride=self.doc_stride,
+            version_2_with_negative=False
         )
         train_data_size = self.train_meta_data['train_data_size']
         self.steps_per_epoch = int(train_data_size // self.batch_size)
         self.total_train_steps = self.steps_per_epoch * self.epochs
 
-        # self.valid_meta_data = generate_valid_tf_record_from_json_file(
-        #     input_file_path=self.valid_input_file_path,
-        #     vocab_file_path=self.vocab_file_path,
-        #     output_path=self.valid_output_file_path,
-        #     max_seq_length=self.max_seq_len,
-        #     do_lower_case=True,
-        #     max_query_length=self.max_query_len,
-        #     doc_stride=self.doc_stride,
-        #     version_2_with_negative=False,
-        #     batch_size=self.batch_size,
-        #     is_training=True
-        # )
+        self.valid_meta_data = generate_valid_tf_record_from_json_file(
+            input_file_path=self.valid_input_file_path,
+            vocab_file_path=self.vocab_file_path,
+            output_path=self.valid_output_file_path,
+            max_seq_length=self.max_seq_len,
+            do_lower_case=True,
+            max_query_length=self.max_query_len,
+            doc_stride=self.doc_stride,
+            version_2_with_negative=False,
+            batch_size=self.batch_size,
+            is_training=True
+        )
 
         train_dataset = read_and_batch_from_squad_tfrecord(
             filename=self.train_output_file_path,
@@ -98,21 +107,21 @@ class MRCTask:
             is_training=True,
             batch_size=self.batch_size
         )
-        # valid_dataset = read_and_batch_from_squad_tfrecord(
-        #     filename=self.valid_output_file_path,
-        #     max_seq_len=self.max_seq_len,
-        #     is_training=True,
-        #     batch_size=self.batch_size
-        # )
+        valid_dataset = read_and_batch_from_squad_tfrecord(
+            filename=self.valid_output_file_path,
+            max_seq_len=self.max_seq_len,
+            is_training=True,
+            batch_size=self.batch_size
+        )
 
         train_dataset = train_dataset.map(
             map_data_to_mrc_task,
             num_parallel_calls=tf.data.experimental.AUTOTUNE
         )
-        # valid_dataset = valid_dataset.map(
-        #     map_data_to_mrc_task,
-        #     num_parallel_calls=tf.data.experimental.AUTOTUNE
-        # )
+        valid_dataset = valid_dataset.map(
+            map_data_to_mrc_task,
+            num_parallel_calls=tf.data.experimental.AUTOTUNE
+        )
 
         # 在 distribution strategy scope 下定义:
         #   1. model
@@ -136,14 +145,16 @@ class MRCTask:
 
             model.compile(
                 optimizer=optimizer,
-                loss=[
-                    tf.keras.losses.SparseCategoricalCrossentropy(
+                loss={
+                    'start_logits': tf.keras.losses.SparseCategoricalCrossentropy(
                         from_logits=True,
+                        reduction=tf.keras.losses.Reduction.NONE
                     ),
-                    tf.keras.losses.SparseCategoricalCrossentropy(
+                    'end_logits': tf.keras.losses.SparseCategoricalCrossentropy(
                         from_logits=True,
+                        reduction=tf.keras.losses.Reduction.NONE
                     )
-                ],
+                },
                 loss_weights=[0.5, 0.5]
             )
 
@@ -156,7 +167,7 @@ class MRCTask:
             steps_per_epoch=self.steps_per_epoch,
             callbacks=callbacks,
             verbose=1,
-            # validation_data=valid_dataset
+            validation_data=valid_dataset
         )
 
         checkpoint.save(self.model_save_dir)
@@ -301,6 +312,7 @@ def main():
     task = MRCTask(
         get_model_params(),
         use_pretrain=False,
+        use_prev_record=False,
         batch_size=2,
         inference_type=None
     )

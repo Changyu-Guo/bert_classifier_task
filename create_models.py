@@ -58,19 +58,16 @@ def create_mrc_model(is_train=True, use_pretrain=False):
     embedding = bert_output[0]
 
     # (batch_size, seq_len, 1)
-    start_logits = tf.keras.layers.Dense(1, name='start_logits', use_bias=False)(embedding)
+    start_logits = tf.keras.layers.Dense(1, use_bias=False)(embedding)
     # (batch_size, seq_len)
-    start_logits = tf.keras.layers.Flatten()(start_logits)
+    start_logits = tf.keras.layers.Flatten(name='start_logits')(start_logits)
 
-    end_logits = tf.keras.layers.Dense(1, name='end_logits', use_bias=False)(embedding)
-    end_logits = tf.keras.layers.Flatten()(end_logits)
+    end_logits = tf.keras.layers.Dense(1, use_bias=False)(embedding)
+    end_logits = tf.keras.layers.Flatten(name='end_logits')(end_logits)
 
     model = tf.keras.Model(
         inputs=[inputs_ids, inputs_mask, segment_ids],
-        outputs={
-            'start_logits': start_logits,
-            'end_logits': end_logits
-        }
+        outputs=[start_logits, end_logits]
     )
 
     return model
