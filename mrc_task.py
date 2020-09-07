@@ -374,7 +374,7 @@ TRAIN_OUTPUT_META_PATH = 'datasets/tfrecord_datasets/mrc_train_meta.json'
 VALID_OUTPUT_META_PATH = 'datasets/tfrecord_datasets/mrc_valid_meta.json'
 PREDICT_VALID_OUTPUT_META_PATH = 'datasets/tfrecord_datasets/mrc_predict_valid_meta.json'
 
-VOCAB_FILE_PATH = 'vocab.txt'
+VOCAB_FILE_PATH = 'large-vocab.txt'
 
 MAX_SEQ_LEN = 200
 MAX_QUERY_LEN = 32
@@ -411,11 +411,12 @@ def get_model_params():
         max_seq_len=MAX_SEQ_LEN,
         max_query_len=MAX_QUERY_LEN,
         doc_stride=DOC_STRIDE,
-        init_lr=1e-5,
+        init_lr=3e-5,
         end_lr=0.0,
         warmup_steps_ratio=0.1,
         valid_data_ratio=0.1,
         time_prefix=time.strftime('%Y_%m_%d', time.localtime()),
+        enable_checkpointing=True,
         enable_tensorboard=True,
         tensorboard_log_dir=TENSORBOARD_LOG_DIR,
         n_best_size=N_BEST_SIZE,
