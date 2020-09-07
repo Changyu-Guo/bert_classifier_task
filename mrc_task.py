@@ -439,4 +439,4 @@ def main():
 
 if __name__ == '__main__':
     task = main()
-    task.predict_output()
+    task.train()
