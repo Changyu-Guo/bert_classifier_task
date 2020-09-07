@@ -263,21 +263,6 @@ class ClassifierTask:
             tf.io.gfile.makedirs(_dir)
 
 
-class MRCTask:
-
-    def __init__(self):
-        pass
-
-    def train(self):
-        pass
-
-    def eval(self):
-        pass
-
-    def predict(self):
-        pass
-
-
 # Global Variables #####
 DESC_FILE_PATH = 'datasets/tfrecord_datasets/multi_label_cls_all_desc.json'
 MODEL_SAVE_DIR = './saved_models'

@@ -10,8 +10,10 @@ from create_models import create_mrc_model
 from distribu_utils import get_distribution_strategy
 from distribu_utils import get_strategy_scope
 from optimization import create_optimizer
+import tokenization
 from inputs_pipeline import read_and_batch_from_squad_tfrecord
 from inputs_pipeline import map_data_to_mrc_task
+from inputs_pipeline import map_data_to_mrc_predict_task
 from squad_processor import FeatureWriter
 from squad_processor import read_squad_examples
 from squad_processor import convert_examples_to_features
@@ -123,7 +125,7 @@ class MRCTask:
                 max_query_length=self.max_query_len,
                 doc_stride=self.doc_stride,
                 version_2_with_negative=False,
-                batch_size=self.batch_size,
+                batch_size=None,
                 is_training=True
             )
             with tf.io.gfile.GFile(self.valid_output_meta_path, mode='w') as writer:
@@ -246,9 +248,18 @@ class MRCTask:
 
         return callbacks
 
-    def predict_output(self, tokenizer):
+    def predict_output(self):
+        with get_strategy_scope(self.distribution_strategy):
+            model = create_mrc_model(is_train=False, use_pretrain=False)
+            checkpoint = tf.train.Checkpoint(model=model)
+            checkpoint.restore(tf.train.latest_checkpoint(self.model_save_dir))
+
+        tokenizer = tokenization.FullTokenizer(
+            vocab_file=self.vocab_file_path, do_lower_case=True
+        )
+
         valid_examples = read_squad_examples(
-            input_file=self.train_input_file_path,
+            input_file=self.valid_input_file_path,
             is_training=False,
             version_2_with_negative=False
         )
@@ -279,26 +290,48 @@ class MRCTask:
 
         num_steps = int(dataset_size // self.predict_batch_size)
 
+        dataset = read_and_batch_from_squad_tfrecord(
+            self.predict_valid_output_file_path,
+            max_seq_len=self.max_seq_len,
+            is_training=False,
+            repeat=False,
+            batch_size=self.predict_batch_size
+        )
+
         # predict
-        for data in dataset_size:
-            pass
+        all_results = []
+        for index, data in enumerate(dataset):
+            unique_ids = data.pop('unique_ids')
+            start_logits, end_logits = model.predict(map_data_to_mrc_predict_task(data))
+
+            for result in self.get_raw_results(dict(
+                unique_ids=unique_ids,
+                start_logits=start_logits,
+                end_logits=end_logits
+            )):
+                all_results.append(result)
+                if len(all_results) % 100 == 0:
+                    print()
+
+            print(index)
+
+        print(all_results[0])
 
     def get_raw_results(self, predictions):
         RawResult = collections.namedtuple(
             'RawResult',
             ['unique_id', 'start_logits', 'end_logits']
         )
-        for unique_ids, start_logits, end_logits in zip(
+        for unique_id, start_logits, end_logits in zip(
             predictions['unique_ids'],
             predictions['start_logits'],
             predictions['end_logits']
         ):
-            for values in zip(unique_ids.numpy(), start_logits.numpy(), end_logits.numpy()):
-                yield RawResult(
-                    unique_id=values[0],
-                    start_logits=values[1].tolist(),
-                    end_logits=values[2].tolist()
-                )
+            yield RawResult(
+                unique_id=unique_id,
+                start_logits=start_logits,
+                end_logits=end_logits
+            )
 
 
 # Global Variables #####
@@ -351,7 +384,7 @@ def get_model_params():
         max_seq_len=MAX_SEQ_LEN,
         max_query_len=MAX_QUERY_LEN,
         doc_stride=DOC_STRIDE,
-        init_lr=1e-4,
+        init_lr=5e-5,
         end_lr=0.0,
         warmup_steps_ratio=0.1,
         valid_data_ratio=0.1,
@@ -365,9 +398,9 @@ def main():
     logging.set_verbosity(logging.INFO)
     task = MRCTask(
         get_model_params(),
-        use_pretrain=True,
-        use_prev_record=False,
-        batch_size=32,
+        use_pretrain=False,
+        use_prev_record=True,
+        batch_size=2,
         inference_type=None
     )
     return task

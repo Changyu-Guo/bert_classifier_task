@@ -122,3 +122,7 @@ def map_data_to_mrc_task(data):
         (data['input_ids'], data['input_mask'], data['segment_ids']),
         data['start_positions'], data['end_positions']
     )
+
+
+def map_data_to_mrc_predict_task(data):
+    return data['input_ids'], data['input_mask'], data['segment_ids']

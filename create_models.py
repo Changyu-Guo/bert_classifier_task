@@ -41,8 +41,6 @@ def create_mrc_model(is_train=True, use_pretrain=False):
     inputs_mask = tf.keras.Input((None,), name='inputs_mask', dtype=tf.int64)
     segment_ids = tf.keras.Input((None,), name='segment_ids', dtype=tf.int64)
 
-    # 用于计算 loss
-
     if use_pretrain:
         # TODO: 使用全局变量或局部变量替换掉这里固定的字符串
         bert_model = TFBertModel.from_pretrained('bert-base-chinese')
@@ -54,13 +52,13 @@ def create_mrc_model(is_train=True, use_pretrain=False):
 
     bert_output = bert_model([inputs_ids, inputs_mask, segment_ids], training=is_train)
 
+    # 最后一层所有输出
     # (batch_size, seq_len, hidden_size)
     embedding = bert_output[0]
 
     intermediate_logits = tf.keras.layers.Dense(
         2,
-        activation='relu',
-        kernel_initializer='glorot_uniform'
+        kernel_initializer=tf.keras.initializers.TruncatedNormal(stddev=0.02)
     )(embedding)
 
     # (batch_size, seq_len, 1)

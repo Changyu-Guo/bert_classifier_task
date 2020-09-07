@@ -1,1 +1,8 @@
-{"task_type": "bert_squad_train", "train_data_size": 29257, "max_seq_len": 200, "max_query_len": 32, "doc_stride": 128, "version_2_with_negative": false}
+{
+  "task_type": "bert_squad_train",
+  "train_data_size": 29257,
+  "max_seq_len": 200,
+  "max_query_len": 32,
+  "doc_stride": 128,
+  "version_2_with_negative": false
+}
