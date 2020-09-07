@@ -19,6 +19,8 @@ from squad_processor import read_squad_examples
 from squad_processor import convert_examples_to_features
 from squad_processor import generate_train_tf_record_from_json_file
 from squad_processor import generate_valid_tf_record_from_json_file
+from squad_processor import postprocess_output
+from squad_processor import write_to_json_files
 
 
 class MRCTask:
@@ -69,6 +71,11 @@ class MRCTask:
             kwargs['tensorboard_log_dir'],
             self.time_prefix + '_' + self.task_name + '_' + str(self.epochs)
         )
+
+        self.n_best_size = kwargs['n_best_size']
+        self.max_answer_len = kwargs['max_answer_len']
+        self.null_score_diff_threshold = kwargs['null_score_diff_threshold']
+        self.inference_results_save_dir = kwargs['inference_results_save_dir']
 
         if use_prev_record:
             if not (kwargs['train_output_file_path'] or kwargs['valid_output_file_path']):
@@ -300,7 +307,7 @@ class MRCTask:
 
         # predict
         all_results = []
-        for index, data in enumerate(dataset):
+        for data in dataset:
             unique_ids = data.pop('unique_ids')
             start_logits, end_logits = model.predict(map_data_to_mrc_predict_task(data))
 
@@ -310,12 +317,18 @@ class MRCTask:
                 end_logits=end_logits
             )):
                 all_results.append(result)
-                if len(all_results) % 100 == 0:
-                    print()
 
-            print(index)
+        all_predictions, all_nbest_json = postprocess_output(
+            all_examples=valid_examples,
+            all_features=valid_features,
+            all_results=all_results,
+            n_best_size=self.n_best_size,
+            max_answer_length=self.max_answer_len,
+            do_lower_case=True,
+            verbose=False
+        )
 
-        print(all_results[0])
+        self.dump_to_files(all_predictions, all_nbest_json)
 
     def get_raw_results(self, predictions):
         RawResult = collections.namedtuple(
@@ -328,10 +341,17 @@ class MRCTask:
             predictions['end_logits']
         ):
             yield RawResult(
-                unique_id=unique_id,
-                start_logits=start_logits,
-                end_logits=end_logits
+                unique_id=unique_id.numpy(),
+                start_logits=start_logits.tolist(),
+                end_logits=end_logits.tolist()
             )
+
+    def dump_to_files(self, all_predictions, all_nbest_json):
+        output_prediction_file = os.path.join(self.inference_results_save_dir, 'predictions.json')
+        output_nbest_file = os.path.join(self.inference_results_save_dir, 'nbest_predictions.json')
+
+        write_to_json_files(all_predictions, output_prediction_file)
+        write_to_json_files(all_nbest_json, output_nbest_file)
 
 
 # Global Variables #####
@@ -360,7 +380,14 @@ MAX_SEQ_LEN = 200
 MAX_QUERY_LEN = 32
 DOC_STRIDE = 128
 
-PREDICT_BATCH_SIZE = 32
+PREDICT_BATCH_SIZE = 128
+
+# inference
+N_BEST_SIZE = 20
+MAX_ANSWER_LENGTH = 30
+NULL_SCORE_DIFF_THRESHOLD = 0.0
+
+INFERENCE_RESULTS_SAVE_DIR = 'inference_results/mrc_results'
 
 
 def get_model_params():
@@ -384,13 +411,17 @@ def get_model_params():
         max_seq_len=MAX_SEQ_LEN,
         max_query_len=MAX_QUERY_LEN,
         doc_stride=DOC_STRIDE,
-        init_lr=5e-5,
+        init_lr=1e-5,
         end_lr=0.0,
         warmup_steps_ratio=0.1,
         valid_data_ratio=0.1,
         time_prefix=time.strftime('%Y_%m_%d', time.localtime()),
         enable_tensorboard=True,
-        tensorboard_log_dir=TENSORBOARD_LOG_DIR
+        tensorboard_log_dir=TENSORBOARD_LOG_DIR,
+        n_best_size=N_BEST_SIZE,
+        max_answer_len=MAX_ANSWER_LENGTH,
+        null_score_diff_threshold=NULL_SCORE_DIFF_THRESHOLD,
+        inference_results_save_dir=INFERENCE_RESULTS_SAVE_DIR
     )
 
 
@@ -408,4 +439,4 @@ def main():
 
 if __name__ == '__main__':
     task = main()
-    task.train()
+    task.predict_output()

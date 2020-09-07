@@ -3,7 +3,9 @@
     <words>
       <w>adamw</w>
       <w>ckpt</w>
+      <w>logit</w>
       <w>logits</w>
+      <w>nbest</w>
       <w>probs</w>
     </words>
   </dictionary>

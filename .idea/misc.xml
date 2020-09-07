@@ -4,9 +4,9 @@
     <file url="file://$PROJECT_DIR$/datasets/raw_datasets/init-train-table.txt" />
     <file url="file://$PROJECT_DIR$/datasets/raw_datasets/init-train.txt" />
     <file url="file://$PROJECT_DIR$/datasets/raw_datasets/relation_questions.txt" />
-    <file url="file://$PROJECT_DIR$/inference_results/2020_08_28_results.txt" />
-    <file url="file://$PROJECT_DIR$/inference_results/2020_08_29_result.txt" />
-    <file url="file://$PROJECT_DIR$/inference_results/2020_08_30_result.txt" />
+    <file url="file://$PROJECT_DIR$/inference_results/multi_label_cls_results/2020_08_28_results.txt" />
+    <file url="file://$PROJECT_DIR$/inference_results/multi_label_cls_results/2020_08_29_result.txt" />
+    <file url="file://$PROJECT_DIR$/inference_results/multi_label_cls_results/2020_08_30_result.txt" />
     <file url="file://$PROJECT_DIR$/vocab.txt" />
   </component>
   <component name="ProjectRootManager" version="2" project-jdk-name="Python 3.6" project-jdk-type="Python SDK" />

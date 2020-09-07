@@ -499,7 +499,7 @@ def write_predictions(all_examples,
     logging.info("Writing predictions to: %s", (output_prediction_file))
     logging.info("Writing nbest to: %s", (output_nbest_file))
 
-    all_predictions, all_nbest_json, scores_diff_json = (
+    all_predictions, all_nbest_json = (
         postprocess_output(
             all_examples=all_examples,
             all_features=all_features,
@@ -507,8 +507,6 @@ def write_predictions(all_examples,
             n_best_size=n_best_size,
             max_answer_length=max_answer_length,
             do_lower_case=do_lower_case,
-            version_2_with_negative=version_2_with_negative,
-            null_score_diff_threshold=null_score_diff_threshold,
             verbose=verbose))
 
     write_to_json_files(all_predictions, output_prediction_file)
@@ -517,58 +515,47 @@ def write_predictions(all_examples,
         write_to_json_files(scores_diff_json, output_null_log_odds_file)
 
 
-def postprocess_output(all_examples,
-                       all_features,
-                       all_results,
-                       n_best_size,
-                       max_answer_length,
-                       do_lower_case,
-                       version_2_with_negative=False,
-                       null_score_diff_threshold=0.0,
-                       verbose=False):
-    """Postprocess model output, to form predicton results."""
+def postprocess_output(
+        all_examples,
+        all_features,
+        all_results,
+        n_best_size,
+        max_answer_length,
+        do_lower_case,
+        verbose=False
+):
+    """Postprocess model output, to form prediction results."""
 
+    # 每个 example 可能对应多个 feature
+    # example_index_to_features 的作用是根据 example 的 index 找到其对应的 features
+    # 在 convert_examples_to_features 的时候，每个 feature 都保存了其对应的 example_index
     example_index_to_features = collections.defaultdict(list)
     for feature in all_features:
         example_index_to_features[feature.example_index].append(feature)
+
+    # 每个 feature 都有一个 unique_id, 可以根据 unique_id 确定一个 feature 对应的答案
     unique_id_to_result = {}
     for result in all_results:
         unique_id_to_result[result.unique_id] = result
 
-    _PrelimPrediction = collections.namedtuple(  # pylint: disable=invalid-name
+    # 候选答案
+    _PrelimPrediction = collections.namedtuple(
         "PrelimPrediction",
         ["feature_index", "start_index", "end_index", "start_logit", "end_logit"])
 
     all_predictions = collections.OrderedDict()
     all_nbest_json = collections.OrderedDict()
-    scores_diff_json = collections.OrderedDict()
 
     for (example_index, example) in enumerate(all_examples):
         features = example_index_to_features[example_index]
 
         prelim_predictions = []
-        # keep track of the minimum score of null start+end of position 0
-        score_null = 1000000  # large and positive
-        min_null_feature_index = 0  # the paragraph slice with min mull score
-        null_start_logit = 0  # the start logit at the slice with min null score
-        null_end_logit = 0  # the end logit at the slice with min null score
         for (feature_index, feature) in enumerate(features):
             result = unique_id_to_result[feature.unique_id]
             start_indexes = _get_best_indexes(result.start_logits, n_best_size)
             end_indexes = _get_best_indexes(result.end_logits, n_best_size)
-            # if we could have irrelevant answers, get the min score of irrelevant
-            if version_2_with_negative:
-                feature_null_score = result.start_logits[0] + result.end_logits[0]
-                if feature_null_score < score_null:
-                    score_null = feature_null_score
-                    min_null_feature_index = feature_index
-                    null_start_logit = result.start_logits[0]
-                    null_end_logit = result.end_logits[0]
             for start_index in start_indexes:
                 for end_index in end_indexes:
-                    # We could hypothetically create invalid predictions, e.g., predict
-                    # that the start of the span is in the question. We throw out all
-                    # invalid predictions.
                     if start_index >= len(feature.tokens):
                         continue
                     if end_index >= len(feature.tokens):
@@ -590,22 +577,18 @@ def postprocess_output(all_examples,
                             start_index=start_index,
                             end_index=end_index,
                             start_logit=result.start_logits[start_index],
-                            end_logit=result.end_logits[end_index]))
+                            end_logit=result.end_logits[end_index]
+                        )
+                    )
 
-        if version_2_with_negative:
-            prelim_predictions.append(
-                _PrelimPrediction(
-                    feature_index=min_null_feature_index,
-                    start_index=0,
-                    end_index=0,
-                    start_logit=null_start_logit,
-                    end_logit=null_end_logit))
+        # start_logit + end_logit 越大认为这个答案越好
         prelim_predictions = sorted(
             prelim_predictions,
             key=lambda x: (x.start_logit + x.end_logit),
-            reverse=True)
+            reverse=True
+        )
 
-        _NbestPrediction = collections.namedtuple(  # pylint: disable=invalid-name
+        _NbestPrediction = collections.namedtuple(
             "NbestPrediction", ["text", "start_logit", "end_logit"])
 
         seen_predictions = {}
@@ -614,7 +597,7 @@ def postprocess_output(all_examples,
             if len(nbest) >= n_best_size:
                 break
             feature = features[pred.feature_index]
-            if pred.start_index > 0:  # this is a non-null prediction
+            if pred.start_index > 0:
                 tok_tokens = feature.tokens[pred.start_index:(pred.end_index + 1)]
                 orig_doc_start = feature.token_to_orig_map[pred.start_index]
                 orig_doc_end = feature.token_to_orig_map[pred.end_index]
@@ -646,13 +629,6 @@ def postprocess_output(all_examples,
                     start_logit=pred.start_logit,
                     end_logit=pred.end_logit))
 
-        # if we didn't inlude the empty option in the n-best, inlcude it
-        if version_2_with_negative:
-            if "" not in seen_predictions:
-                nbest.append(
-                    _NbestPrediction(
-                        text="", start_logit=null_start_logit,
-                        end_logit=null_end_logit))
         # In very rare edge cases we could have no valid predictions. So we
         # just create a nonce prediction in this case to avoid failure.
         if not nbest:
@@ -682,33 +658,17 @@ def postprocess_output(all_examples,
 
         assert len(nbest_json) >= 1
 
-        if not version_2_with_negative:
-            all_predictions[example.qas_id] = nbest_json[0]["text"]
-        else:
-            # pytype: disable=attribute-error
-            # predict "" iff the null score - the score of best non-null > threshold
-            if best_non_null_entry is not None:
-                score_diff = score_null - best_non_null_entry.start_logit - (
-                    best_non_null_entry.end_logit)
-                scores_diff_json[example.qas_id] = score_diff
-                if score_diff > null_score_diff_threshold:
-                    all_predictions[example.qas_id] = ""
-                else:
-                    all_predictions[example.qas_id] = best_non_null_entry.text
-            else:
-                logging.warning("best_non_null_entry is None")
-                scores_diff_json[example.qas_id] = score_null
-                all_predictions[example.qas_id] = ""
-            # pytype: enable=attribute-error
+        # TODO 此处只输出了预测答案，应在此处加上 原始文章、原始问题、原始答案
+        all_predictions[example.qas_id] = nbest_json[0]["text"]
 
         all_nbest_json[example.qas_id] = nbest_json
 
-    return all_predictions, all_nbest_json, scores_diff_json
+    return all_predictions, all_nbest_json
 
 
 def write_to_json_files(json_records, json_file):
     with tf.io.gfile.GFile(json_file, "w") as writer:
-        writer.write(json.dumps(json_records, indent=4) + "\n")
+        writer.write(json.dumps(json_records, indent=2, ensure_ascii=False) + "\n")
 
 
 def get_final_text(pred_text, orig_text, do_lower_case, verbose=False):
@@ -748,7 +708,7 @@ def get_final_text(pred_text, orig_text, do_lower_case, verbose=False):
             ns_to_s_map[len(ns_chars)] = i
             ns_chars.append(c)
         ns_text = "".join(ns_chars)
-        return (ns_text, ns_to_s_map)
+        return ns_text, ns_to_s_map
 
     # We first tokenize `orig_text`, strip whitespace from the result
     # and `pred_text`, and check if they are the same length. If they are
@@ -811,7 +771,7 @@ def _get_best_indexes(logits, n_best_size):
     index_and_score = sorted(enumerate(logits), key=lambda x: x[1], reverse=True)
 
     best_indexes = []
-    for i in range(len(index_and_score)):  # pylint: disable=consider-using-enumerate
+    for i in range(len(index_and_score)):
         if i >= n_best_size:
             break
         best_indexes.append(index_and_score[i][0])
