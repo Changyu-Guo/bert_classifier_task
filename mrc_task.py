@@ -398,9 +398,9 @@ def main():
     logging.set_verbosity(logging.INFO)
     task = MRCTask(
         get_model_params(),
-        use_pretrain=False,
-        use_prev_record=True,
-        batch_size=2,
+        use_pretrain=True,
+        use_prev_record=False,
+        batch_size=32,
         inference_type=None
     )
     return task
