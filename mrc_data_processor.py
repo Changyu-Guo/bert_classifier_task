@@ -14,7 +14,7 @@ from data_processor import extract_relations_from_init_train_table
 from utils import get_label_to_id_map
 from squad_processor import read_squad_examples
 
-vocab_filepath = './vocab.txt'
+vocab_filepath = 'vocabs/bert-base-chinese-vocab.txt'
 
 # all relation questions
 relation_questions_txt_path = 'datasets/raw_datasets/relation_questions.txt'

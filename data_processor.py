@@ -20,7 +20,7 @@ init_train_table_txt_path = 'datasets/raw_datasets/init-train-table.txt'
 init_train_txt_path = 'datasets/raw_datasets/init-train.txt'
 tfrecord_save_path = 'datasets/tfrecord_datasets/multi_label_cls_all.tfrecord'
 desc_json_save_path = 'datasets/tfrecord_datasets/multi_label_cls_all_desc.json'
-vocab_filepath = './vocab.txt'
+vocab_filepath = 'vocabs/bert-base-chinese-vocab.txt'
 
 MAX_SEQ_LEN = 200
 
@@ -187,7 +187,7 @@ def inference(model, ret_path):
     _, relations, _, _ = extract_relations_from_init_train_table()
     id_to_relation_map = relations
 
-    tokenizer = BertWordPieceTokenizer('./vocab.txt')
+    tokenizer = BertWordPieceTokenizer('vocabs/bert-base-chinese-vocab.txt')
 
     tokenizer.enable_padding(length=200)
     tokenizer.enable_truncation(max_length=200)
@@ -241,7 +241,7 @@ def inference_tfrecord(model, ret_path, dataset):
     _, relations, _, _ = extract_relations_from_init_train_table()
     id_to_relation_map = relations
 
-    tokenizer = BertWordPieceTokenizer(vocab_file='./vocab.txt')
+    tokenizer = BertWordPieceTokenizer(vocab_file='vocabs/bert-base-chinese-vocab.txt')
     writer = tf.io.gfile.GFile(ret_path, mode='w')
 
     index = 0

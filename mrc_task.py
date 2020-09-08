@@ -74,7 +74,6 @@ class MRCTask:
 
         self.n_best_size = kwargs['n_best_size']
         self.max_answer_len = kwargs['max_answer_len']
-        self.null_score_diff_threshold = kwargs['null_score_diff_threshold']
         self.inference_results_save_dir = kwargs['inference_results_save_dir']
 
         if use_prev_record:
@@ -141,7 +140,7 @@ class MRCTask:
 
         train_data_size = self.train_meta_data['train_data_size']
         # for train
-        self.steps_per_epoch = int(train_data_size // self.batch_size)
+        self.steps_per_epoch = int(train_data_size // self.batch_size) + 1
         # for warmup
         self.total_train_steps = self.steps_per_epoch * self.epochs
 
@@ -156,7 +155,7 @@ class MRCTask:
         valid_dataset = read_and_batch_from_squad_tfrecord(
             filename=self.valid_output_file_path,
             max_seq_len=self.max_seq_len,
-            is_training=True,
+            is_training=True,  # 这里设置为 True, 使得数据集包含 start / end position
             repeat=False,
             batch_size=self.batch_size
         )
@@ -216,7 +215,7 @@ class MRCTask:
             validation_data=valid_dataset
         )
 
-        checkpoint.save(self.model_save_dir)
+        # checkpoint.save(self.model_save_dir)
 
     def _ensure_dir_exist(self, _dir):
         if not tf.io.gfile.exists(_dir):
@@ -235,12 +234,13 @@ class MRCTask:
         """
             三个重要的回调：
                 1. checkpoint (重要)
-                2. summary (可选)
+                2. summary / tensorboard (可选)
                 3. earlyStopping (可选)
         """
         callbacks = []
         if self.enable_checkpointing:
-            ckpt_path = os.path.join(self.model_save_dir, 'cp-{epoch:04d}.ckpt')
+            ckpt_path = os.path.join(self.model_save_dir, 'ckpt-{epoch:02d}.ckpt')
+            # 只保留在 valid dataset 上表现最好的结果
             callbacks.append(
                 tf.keras.callbacks.ModelCheckpoint(
                     ckpt_path, save_weights_only=True, save_best_only=True
@@ -299,8 +299,6 @@ class MRCTask:
             batch_size=self.predict_batch_size
         )
         valid_writer.close()
-
-        num_steps = int(dataset_size // self.predict_batch_size)
 
         dataset = read_and_batch_from_squad_tfrecord(
             self.predict_valid_output_file_path,
@@ -361,38 +359,44 @@ class MRCTask:
         write_to_json_files(all_nbest_json, output_nbest_file)
 
 
-# Global Variables #####
+# Global Variables ############
 
 # task
 TASK_NAME = 'mrc'
 
-# tfrecord
-MRC_TRAIN_INPUT_FILE_PATH = 'datasets/preprocessed_datasets/mrc_train.json'
-MRC_VALID_INPUT_FILE_PATH = 'datasets/preprocessed_datasets/mrc_valid.json'
+# raw json
+MRC_TRAIN_INPUT_FILE_PATH = 'datasets/preprocessed_datasets/train-v1.1.json'
+MRC_VALID_INPUT_FILE_PATH = 'datasets/preprocessed_datasets/dev-v1.1.json'
 
-# model
+# tfrecord
+TRAIN_OUTPUT_FILE_PATH = 'datasets/tfrecord_datasets/squad_train.tfrecord'
+VALID_OUTPUT_FILE_PATH = 'datasets/tfrecord_datasets/squad_valid.tfrecord'
+PREDICT_VALID_OUTPUT_FILE_PATH = 'datasets/tfrecord_datasets/squad_predict_valid.tfrecord'
+
+# tfrecord meta data
+TRAIN_OUTPUT_META_PATH = 'datasets/tfrecord_datasets/squad_train_meta.json'
+VALID_OUTPUT_META_PATH = 'datasets/tfrecord_datasets/squad_valid_meta.json'
+PREDICT_VALID_OUTPUT_META_PATH = 'datasets/tfrecord_datasets/mrc_predict_valid_meta.json'
+
+# save relate
 MODEL_SAVE_DIR = './saved_models'
 TENSORBOARD_LOG_DIR = './logs/mrc-logs'
 
-TRAIN_OUTPUT_FILE_PATH = 'datasets/tfrecord_datasets/mrc_train.tfrecord'
-VALID_OUTPUT_FILE_PATH = 'datasets/tfrecord_datasets/mrc_valid.tfrecord'
-PREDICT_VALID_OUTPUT_FILE_PATH = 'datasets/tfrecord_datasets/mrc_predict_valid.tfrecord'
-TRAIN_OUTPUT_META_PATH = 'datasets/tfrecord_datasets/mrc_train_meta.json'
-VALID_OUTPUT_META_PATH = 'datasets/tfrecord_datasets/mrc_valid_meta.json'
-PREDICT_VALID_OUTPUT_META_PATH = 'datasets/tfrecord_datasets/mrc_predict_valid_meta.json'
+# tokenize
+VOCAB_FILE_PATH = 'vocabs/bert-base-uncased-vocab.txt'
 
-VOCAB_FILE_PATH = 'vocab.txt'
-MAX_SEQ_LEN = 100
-MAX_QUERY_LEN = 32
-DOC_STRIDE = 64
-
+# dataset process relate
+MAX_SEQ_LEN = 384
+MAX_QUERY_LEN = 64
+DOC_STRIDE = 128
 PREDICT_BATCH_SIZE = 128
 
-# inference
+# train relate
+LEARNING_RATE = 3e-5
+
+# inference relate
 N_BEST_SIZE = 20
 MAX_ANSWER_LENGTH = 30
-NULL_SCORE_DIFF_THRESHOLD = 0.0
-
 INFERENCE_RESULTS_SAVE_DIR = 'inference_results/mrc_results'
 
 
@@ -417,17 +421,15 @@ def get_model_params():
         max_seq_len=MAX_SEQ_LEN,
         max_query_len=MAX_QUERY_LEN,
         doc_stride=DOC_STRIDE,
-        init_lr=1e-5,
+        init_lr=LEARNING_RATE,
         end_lr=0.0,
         warmup_steps_ratio=0.1,
-        valid_data_ratio=0.1,
-        time_prefix=time.strftime('%Y_%m_%d', time.localtime()),
+        time_prefix=time.strftime('%Y_%m_%d', time.localtime()),  # 年_月_日
         enable_checkpointing=True,
         enable_tensorboard=True,
         tensorboard_log_dir=TENSORBOARD_LOG_DIR,
         n_best_size=N_BEST_SIZE,
         max_answer_len=MAX_ANSWER_LENGTH,
-        null_score_diff_threshold=NULL_SCORE_DIFF_THRESHOLD,
         inference_results_save_dir=INFERENCE_RESULTS_SAVE_DIR
     )
 
@@ -438,7 +440,7 @@ def main():
         get_model_params(),
         use_pretrain=True,
         use_prev_record=False,
-        batch_size=32,
+        batch_size=24,
         inference_type=None
     )
     return task
@@ -446,4 +448,4 @@ def main():
 
 if __name__ == '__main__':
     task = main()
-    task.predict_output()
+    task.train()

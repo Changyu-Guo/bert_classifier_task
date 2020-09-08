@@ -44,7 +44,7 @@ def create_mrc_model(is_train=True, use_pretrain=False):
 
     if use_pretrain:
         # TODO: 使用全局变量或局部变量替换掉这里固定的字符串
-        bert_model = TFBertModel.from_pretrained('bert-base-chinese')
+        bert_model = TFBertModel.from_pretrained('bert-base-uncased')
     else:
         # 不加载预训练模型，一般在本机测试使用
         # TODO: 使用全局变量或局部变量替换掉这里固定的字符串
@@ -56,6 +56,9 @@ def create_mrc_model(is_train=True, use_pretrain=False):
     # 最后一层所有输出
     # (batch_size, seq_len, hidden_size)
     embedding = bert_output[0]
+
+    if is_train:
+        embedding = tf.keras.layers.Dropout(rate=0.1)(embedding)
 
     intermediate_logits = tf.keras.layers.Dense(
         2,
