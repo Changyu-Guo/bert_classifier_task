@@ -160,10 +160,10 @@ class MRCTask:
         #     batch_size=self.batch_size
         # )
 
-        train_dataset = train_dataset.map(
-            map_data_to_mrc_task,
-            num_parallel_calls=tf.data.experimental.AUTOTUNE
-        )
+        # train_dataset = train_dataset.map(
+        #     map_data_to_mrc_task,
+        #     num_parallel_calls=tf.data.experimental.AUTOTUNE
+        # )
         # valid_dataset = valid_dataset.map(
         #     map_data_to_mrc_task,
         #     num_parallel_calls=tf.data.experimental.AUTOTUNE
