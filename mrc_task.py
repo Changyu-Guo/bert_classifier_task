@@ -104,8 +104,8 @@ class MRCTask:
         self.distribution_strategy = get_distribution_strategy(self.distribution_strategy, num_gpus=1)
 
     def train(self):
-        self._ensure_dir_exist(self.model_save_dir)
-        self._ensure_dir_exist(self.tensorboard_log_dir)
+        # self._ensure_dir_exist(self.model_save_dir)
+        # self._ensure_dir_exist(self.tensorboard_log_dir)
 
         # convert examples to tfrecord or load
         # if self.use_prev_record:
@@ -473,8 +473,8 @@ def get_model_params():
         end_lr=0.0,
         warmup_steps_ratio=0.1,
         time_prefix=time.strftime('%Y_%m_%d', time.localtime()),  # 年_月_日
-        enable_checkpointing=True,
-        enable_tensorboard=True,
+        enable_checkpointing=False,
+        enable_tensorboard=False,
         tensorboard_log_dir=TENSORBOARD_LOG_DIR,
         n_best_size=N_BEST_SIZE,
         max_answer_len=MAX_ANSWER_LENGTH,

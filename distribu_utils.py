@@ -5,10 +5,9 @@ import tensorflow as tf
 
 def tpu_initialize(tpu_address):
     resolver = tf.distribute.cluster_resolver.TPUClusterResolver(
-        tpu=tpu_address
+        # tpu=tpu_address
     )
-    if tpu_address not in ('', 'local'):
-        tf.config.experimental_connect_to_cluster(resolver)
+    tf.config.experimental_connect_to_cluster(resolver)
     tf.tpu.experimental.initialize_tpu_system(resolver)
     return resolver
 
