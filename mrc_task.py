@@ -185,10 +185,13 @@ class MRCTask:
                 model=model,
                 optimizer=optimizer
             )
-            latest_checkpoint = tf.train.latest_checkpoint(self.model_save_dir)
-            if latest_checkpoint:
-                checkpoint.restore(latest_checkpoint)
-                logging.info('Load checkpoint {} from {}'.format(latest_checkpoint, self.model_save_dir))
+            gcs = 'gs://leeyu-checkpoint/bert_model.ckpt'
+            model_load_dir = tf.io.gfile.glob(gcs)
+            checkpoint.restore(model_load_dir)
+            # latest_checkpoint = tf.train.latest_checkpoint(self.model_save_dir)
+            # if latest_checkpoint:
+            #     checkpoint.restore(latest_checkpoint)
+            #     logging.info('Load checkpoint {} from {}'.format(latest_checkpoint, self.model_save_dir))
 
             model.compile(
                 optimizer=optimizer,
@@ -374,11 +377,11 @@ TRAIN_OUTPUT_META_PATH = 'datasets/tfrecord_datasets/mrc_train_meta.json'
 VALID_OUTPUT_META_PATH = 'datasets/tfrecord_datasets/mrc_valid_meta.json'
 PREDICT_VALID_OUTPUT_META_PATH = 'datasets/tfrecord_datasets/mrc_predict_valid_meta.json'
 
-VOCAB_FILE_PATH = 'large-vocab.txt'
+VOCAB_FILE_PATH = 'vocab-large.txt'
 
-MAX_SEQ_LEN = 200
+MAX_SEQ_LEN = 100
 MAX_QUERY_LEN = 32
-DOC_STRIDE = 128
+DOC_STRIDE = 64
 
 PREDICT_BATCH_SIZE = 128
 
@@ -396,7 +399,7 @@ def get_model_params():
         lambda: None,
         task_name=TASK_NAME,
         distribution_strategy='one_device',
-        epochs=15,
+        epochs=20,
         predict_batch_size=PREDICT_BATCH_SIZE,
         model_save_dir=MODEL_SAVE_DIR,
         train_input_file_path=MRC_TRAIN_INPUT_FILE_PATH,
@@ -430,9 +433,9 @@ def main():
     logging.set_verbosity(logging.INFO)
     task = MRCTask(
         get_model_params(),
-        use_pretrain=True,
+        use_pretrain=False,
         use_prev_record=False,
-        batch_size=32,
+        batch_size=16,
         inference_type=None
     )
     return task

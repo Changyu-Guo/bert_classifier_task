@@ -1,7 +1,6 @@
 # -*- coding: utf - 8 -*-
 
 import tensorflow as tf
-from transformers import RobertaConfig, TFRobertaModel
 from transformers import BertConfig, TFBertModel
 from custom_losses import squad_loss_fn
 
@@ -45,11 +44,11 @@ def create_mrc_model(is_train=True, use_pretrain=False):
     if use_pretrain:
         # TODO: 使用全局变量或局部变量替换掉这里固定的字符串
         # bert_model = TFBertModel.from_pretrained('bert-base-chinese')
-        bert_model = TFRobertaModel.from_pretrained('hfl/chinese-roberta-wwm-ext-large')
+        bert_model = TFBertModel.from_pretrained('hfl/chinese-roberta-wwm-ext-large')
     else:
         # 不加载预训练模型，一般在本机测试使用
         # TODO: 使用全局变量或局部变量替换掉这里固定的字符串
-        bert_config = BertConfig.from_json_file('./config/bert-base-chinese-config.json')
+        bert_config = BertConfig.from_json_file('config/chinese_wwm_roberta_large_config.json')
         bert_model = TFBertModel(bert_config)
 
     bert_output = bert_model([inputs_ids, inputs_mask, segment_ids], training=is_train)

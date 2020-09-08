@@ -1,8 +1,8 @@
 {
   "task_type": "bert_squad_valid",
-  "valid_data_size": 3238,
-  "max_seq_len": 200,
+  "valid_data_size": 4066,
+  "max_seq_len": 100,
   "max_query_len": 32,
-  "doc_stride": 128,
+  "doc_stride": 64,
   "version_2_with_negative": false
 }

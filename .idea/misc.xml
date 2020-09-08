@@ -8,6 +8,7 @@
     <file url="file://$PROJECT_DIR$/inference_results/multi_label_cls_results/2020_08_29_result.txt" />
     <file url="file://$PROJECT_DIR$/inference_results/multi_label_cls_results/2020_08_30_result.txt" />
     <file url="file://$PROJECT_DIR$/large-vocab.txt" />
+    <file url="file://$PROJECT_DIR$/vocab-large.txt" />
     <file url="file://$PROJECT_DIR$/vocab.txt" />
   </component>
   <component name="ProjectRootManager" version="2" project-jdk-name="Python 3.6" project-jdk-type="Python SDK" />
