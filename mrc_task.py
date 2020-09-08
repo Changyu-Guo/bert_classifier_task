@@ -440,7 +440,7 @@ def main():
         get_model_params(),
         use_pretrain=True,
         use_prev_record=False,
-        batch_size=24,
+        batch_size=12,
         inference_type=None
     )
     return task
