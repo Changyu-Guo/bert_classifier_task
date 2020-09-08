@@ -105,7 +105,11 @@ def read_and_batch_from_squad_tfrecord(
     def _parse_example(example):
         parsed_example = tf.io.parse_single_example(example, name_to_features)
 
-        return parsed_example
+        return (
+            parsed_example['input_ids'],
+            parsed_example['input_mask'],
+            parsed_example['segment_ids']
+        ), parsed_example['start_positions'], parsed_example['end_positions']
 
     dataset = dataset.map(_parse_example, num_parallel_calls=tf.data.experimental.AUTOTUNE)
 
