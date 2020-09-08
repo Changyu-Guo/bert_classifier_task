@@ -185,9 +185,9 @@ class MRCTask:
                 model=model,
                 optimizer=optimizer
             )
-            gcs = 'gs://leeyu-checkpoint/bert_model.ckpt'
+            gcs = 'gs://leeyu-checkpoint'
             model_load_dir = tf.io.gfile.glob(gcs)
-            checkpoint.restore(model_load_dir)
+            checkpoint.restore(os.path.join(model_load_dir, 'bert_model.ckpt'))
             # latest_checkpoint = tf.train.latest_checkpoint(self.model_save_dir)
             # if latest_checkpoint:
             #     checkpoint.restore(latest_checkpoint)
