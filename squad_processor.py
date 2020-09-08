@@ -493,7 +493,6 @@ def write_predictions(all_examples,
                       output_nbest_file,
                       output_null_log_odds_file,
                       version_2_with_negative=False,
-                      null_score_diff_threshold=0.0,
                       verbose=False):
     """Write final predictions to the json file and log-odds of null if needed."""
     logging.info("Writing predictions to: %s", output_prediction_file)
@@ -543,6 +542,7 @@ def postprocess_output(
         "PrelimPrediction",
         ["feature_index", "start_index", "end_index", "start_logit", "end_logit"])
 
+    only_answer_predictions = collections.OrderedDict()
     all_predictions = []
     all_nbest_json = collections.OrderedDict()
 
@@ -666,11 +666,12 @@ def postprocess_output(
             "pred_answer": nbest_json[0]['text']
         }
 
+        only_answer_predictions[example.qas_id] = nbest_json[0]['text']
         all_predictions.append(pred_dict_item)
 
         all_nbest_json[example.qas_id] = nbest_json
 
-    return all_predictions, all_nbest_json
+    return all_predictions, all_nbest_json, only_answer_predictions
 
 
 def write_to_json_files(json_records, json_file):

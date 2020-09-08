@@ -260,7 +260,11 @@ class MRCTask:
         with get_strategy_scope(self.distribution_strategy):
             model = create_mrc_model(is_train=False, use_pretrain=False)
             checkpoint = tf.train.Checkpoint(model=model)
-            checkpoint.restore(tf.train.latest_checkpoint(self.model_save_dir))
+            checkpoint.restore(
+                tf.train.latest_checkpoint(
+                    'saved_models/mrc_v3_epochs_15'
+                )
+            )
 
         tokenizer = tokenization.FullTokenizer(
             vocab_file=self.vocab_file_path, do_lower_case=True
@@ -268,7 +272,7 @@ class MRCTask:
 
         valid_examples = read_squad_examples(
             input_file=self.valid_input_file_path,
-            is_training=False,
+            is_training=True,
             version_2_with_negative=False
         )
 
@@ -319,7 +323,7 @@ class MRCTask:
             )):
                 all_results.append(result)
 
-        all_predictions, all_nbest_json = postprocess_output(
+        all_predictions, all_nbest_json, only_text_predictions = postprocess_output(
             all_examples=valid_examples,
             all_features=valid_features,
             all_results=all_results,
@@ -329,7 +333,7 @@ class MRCTask:
             verbose=False
         )
 
-        self.dump_to_files(all_predictions, all_nbest_json)
+        self.dump_to_files(all_predictions, all_nbest_json, only_text_predictions)
 
     def get_raw_results(self, predictions):
         RawResult = collections.namedtuple(
@@ -347,10 +351,12 @@ class MRCTask:
                 end_logits=end_logits.tolist()
             )
 
-    def dump_to_files(self, all_predictions, all_nbest_json):
+    def dump_to_files(self, all_predictions, all_nbest_json, only_text_predictions):
+        output_only_text_prediction_file = os.path.join(self.inference_results_save_dir, 'only_text_predictions.json')
         output_prediction_file = os.path.join(self.inference_results_save_dir, 'predictions.json')
         output_nbest_file = os.path.join(self.inference_results_save_dir, 'nbest_predictions.json')
 
+        write_to_json_files(only_text_predictions, output_only_text_prediction_file)
         write_to_json_files(all_predictions, output_prediction_file)
         write_to_json_files(all_nbest_json, output_nbest_file)
 
@@ -375,8 +381,7 @@ TRAIN_OUTPUT_META_PATH = 'datasets/tfrecord_datasets/mrc_train_meta.json'
 VALID_OUTPUT_META_PATH = 'datasets/tfrecord_datasets/mrc_valid_meta.json'
 PREDICT_VALID_OUTPUT_META_PATH = 'datasets/tfrecord_datasets/mrc_predict_valid_meta.json'
 
-VOCAB_FILE_PATH = 'vocab-large.txt'
-
+VOCAB_FILE_PATH = 'vocab.txt'
 MAX_SEQ_LEN = 100
 MAX_QUERY_LEN = 32
 DOC_STRIDE = 64
@@ -441,4 +446,4 @@ def main():
 
 if __name__ == '__main__':
     task = main()
-    task.train()
+    task.predict_output()
