@@ -260,7 +260,7 @@ class MRCTask:
             steps_per_epoch=self.steps_per_epoch,
             callbacks=callbacks,
             verbose=1,
-            validation_data=valid_dataset
+            # validation_data=valid_dataset
         )
 
         checkpoint.save(self.model_save_dir)
