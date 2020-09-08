@@ -35,6 +35,7 @@ def create_cls_model(num_labels, is_train=True, use_pretrain=False):
 
 
 def create_mrc_model(is_train=True, use_pretrain=False):
+    bert_config_file_path = 'config/bert-base-chinese-config.json'
 
     # 输入
     inputs_ids = tf.keras.Input((None,), name='inputs_ids', dtype=tf.int64)
@@ -43,12 +44,11 @@ def create_mrc_model(is_train=True, use_pretrain=False):
 
     if use_pretrain:
         # TODO: 使用全局变量或局部变量替换掉这里固定的字符串
-        # bert_model = TFBertModel.from_pretrained('bert-base-chinese')
-        bert_model = TFBertModel.from_pretrained('hfl/chinese-roberta-wwm-ext-large')
+        bert_model = TFBertModel.from_pretrained('bert-base-chinese')
     else:
         # 不加载预训练模型，一般在本机测试使用
         # TODO: 使用全局变量或局部变量替换掉这里固定的字符串
-        bert_config = BertConfig.from_json_file('config/chinese_wwm_roberta_large_config.json')
+        bert_config = BertConfig.from_json_file(bert_config_file_path)
         bert_model = TFBertModel(bert_config)
 
     bert_output = bert_model([inputs_ids, inputs_mask, segment_ids], training=is_train)

@@ -55,11 +55,11 @@ class SquadExample(object):
             tokenization.printable_text(self.question_text))
         s += ", doc_tokens: [%s]" % (" ".join(self.doc_tokens))
         if self.start_position:
-            s += ", start_position: %d" % (self.start_position)
+            s += ", start_position: %d" % self.start_position
         if self.start_position:
-            s += ", end_position: %d" % (self.end_position)
+            s += ", end_position: %d" % self.end_position
         if self.start_position:
-            s += ", is_impossible: %r" % (self.is_impossible)
+            s += ", is_impossible: %r" % self.is_impossible
         return s
 
 
@@ -344,9 +344,9 @@ def convert_examples_to_features(examples,
 
             if example_index < 20:
                 logging.info("*** Example ***")
-                logging.info("unique_id: %s", (unique_id))
-                logging.info("example_index: %s", (example_index))
-                logging.info("doc_span_index: %s", (doc_span_index))
+                logging.info("unique_id: %s", unique_id)
+                logging.info("example_index: %s", example_index)
+                logging.info("doc_span_index: %s", doc_span_index)
                 logging.info("tokens: %s",
                              " ".join([tokenization.printable_text(x) for x in tokens]))
                 logging.info(
@@ -365,8 +365,8 @@ def convert_examples_to_features(examples,
                     logging.info("impossible example")
                 if is_training and not example.is_impossible:
                     answer_text = " ".join(tokens[start_position:(end_position + 1)])
-                    logging.info("start_position: %d", (start_position))
-                    logging.info("end_position: %d", (end_position))
+                    logging.info("start_position: %d", start_position)
+                    logging.info("end_position: %d", end_position)
                     logging.info("answer: %s", tokenization.printable_text(answer_text))
 
             feature = InputFeatures(
@@ -441,9 +441,9 @@ def _improve_answer_span(doc_tokens, input_start, input_end, tokenizer,
         for new_end in range(input_end, new_start - 1, -1):
             text_span = " ".join(doc_tokens[new_start:(new_end + 1)])
             if text_span == tok_answer_text:
-                return (new_start, new_end)
+                return new_start, new_end
 
-    return (input_start, input_end)
+    return input_start, input_end
 
 
 def _check_is_max_context(doc_spans, cur_span_index, position):
@@ -496,8 +496,8 @@ def write_predictions(all_examples,
                       null_score_diff_threshold=0.0,
                       verbose=False):
     """Write final predictions to the json file and log-odds of null if needed."""
-    logging.info("Writing predictions to: %s", (output_prediction_file))
-    logging.info("Writing nbest to: %s", (output_nbest_file))
+    logging.info("Writing predictions to: %s", output_prediction_file)
+    logging.info("Writing nbest to: %s", output_nbest_file)
 
     all_predictions, all_nbest_json = (
         postprocess_output(
@@ -543,7 +543,7 @@ def postprocess_output(
         "PrelimPrediction",
         ["feature_index", "start_index", "end_index", "start_logit", "end_logit"])
 
-    all_predictions = collections.OrderedDict()
+    all_predictions = []
     all_nbest_json = collections.OrderedDict()
 
     for (example_index, example) in enumerate(all_examples):
@@ -659,7 +659,14 @@ def postprocess_output(
         assert len(nbest_json) >= 1
 
         # TODO 此处只输出了预测答案，应在此处加上 原始文章、原始问题、原始答案
-        all_predictions[example.qas_id] = nbest_json[0]["text"]
+        pred_dict_item = {
+            "origin_text_tokens": example.doc_tokens,
+            "question": example.question_text,
+            "correct_answer": example.orig_answer_text,
+            "pred_answer": nbest_json[0]['text']
+        }
+
+        all_predictions.append(pred_dict_item)
 
         all_nbest_json[example.qas_id] = nbest_json
 

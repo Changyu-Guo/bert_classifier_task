@@ -185,13 +185,11 @@ class MRCTask:
                 model=model,
                 optimizer=optimizer
             )
-            gcs = 'gs://leeyu-checkpoint'
-            model_load_dir = tf.io.gfile.glob(gcs)
-            checkpoint.restore(os.path.join(model_load_dir, 'bert_model.ckpt'))
-            # latest_checkpoint = tf.train.latest_checkpoint(self.model_save_dir)
-            # if latest_checkpoint:
-            #     checkpoint.restore(latest_checkpoint)
-            #     logging.info('Load checkpoint {} from {}'.format(latest_checkpoint, self.model_save_dir))
+
+            latest_checkpoint = tf.train.latest_checkpoint(self.model_save_dir)
+            if latest_checkpoint:
+                checkpoint.restore(latest_checkpoint)
+                logging.info('Load checkpoint {} from {}'.format(latest_checkpoint, self.model_save_dir))
 
             model.compile(
                 optimizer=optimizer,
@@ -399,7 +397,7 @@ def get_model_params():
         lambda: None,
         task_name=TASK_NAME,
         distribution_strategy='one_device',
-        epochs=20,
+        epochs=10,
         predict_batch_size=PREDICT_BATCH_SIZE,
         model_save_dir=MODEL_SAVE_DIR,
         train_input_file_path=MRC_TRAIN_INPUT_FILE_PATH,
@@ -414,7 +412,7 @@ def get_model_params():
         max_seq_len=MAX_SEQ_LEN,
         max_query_len=MAX_QUERY_LEN,
         doc_stride=DOC_STRIDE,
-        init_lr=3e-5,
+        init_lr=1e-5,
         end_lr=0.0,
         warmup_steps_ratio=0.1,
         valid_data_ratio=0.1,
@@ -433,9 +431,9 @@ def main():
     logging.set_verbosity(logging.INFO)
     task = MRCTask(
         get_model_params(),
-        use_pretrain=False,
+        use_pretrain=True,
         use_prev_record=False,
-        batch_size=16,
+        batch_size=32,
         inference_type=None
     )
     return task
