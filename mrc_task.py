@@ -25,12 +25,24 @@ from squad_processor import write_to_json_files
 
 class MRCTask:
 
-    def __init__(self, kwargs, use_pretrain=None, use_prev_record=False, batch_size=None, inference_type=None):
+    def __init__(
+            self,
+            kwargs,
+            use_tpu=False,
+            use_pretrain=None,
+            use_prev_record=False,
+            batch_size=None,
+            inference_type=None
+    ):
 
         # param check
         if use_pretrain is None:
             raise ValueError('Param use_pretrain must be passed')
 
+        if use_tpu and not use_prev_record:
+            raise ValueError('use_prev_record must be True when use tpu')
+
+        self.use_tpu = use_tpu
         self.batch_size = batch_size
         self.use_pretrain = use_pretrain
         self.inference_type = inference_type
@@ -160,6 +172,42 @@ class MRCTask:
             batch_size=self.batch_size
         )
 
+        # 专门用 TPU 训练 squad，后面可以删掉
+        if self.use_tpu:
+            self.model_save_dir = 'gs://leeyu-dataset-public'
+            self.tensorboard_log_dir = 'gs://leeyu-dataset-public'
+            train_tfrecord_path = tf.io.gfile.glob('gs://leeyu-dataset-public/squad_train.tfrecord')[0]
+            valid_tfrecord_path = tf.io.gfile.glob('gs://leeyu-dataset-public/squad_valid.tfrecord')[0]
+            train_tfrecord_meta_path = tf.io.gfile.glob('gs://leeyu-dataset-public/squad_train_meta.json')[0]
+            valid_tfrecord_meta_path = tf.io.gfile.glob('gs://leeyu-dataset-public/squad_valid_meta.json')[0]
+            train_dataset = read_and_batch_from_squad_tfrecord(
+                filename=train_tfrecord_path,
+                max_seq_len=self.max_seq_len,
+                is_training=True,
+                repeat=True,
+                batch_size=self.batch_size
+            )
+            valid_dataset = read_and_batch_from_squad_tfrecord(
+                filename=valid_tfrecord_path,
+                max_seq_len=self.max_seq_len,
+                is_training=True,
+                repeat=False,
+                batch_size=self.batch_size
+            )
+            with tf.io.gfile.GFile(train_tfrecord_meta_path, mode='r') as reader:
+                self.train_meta_data = json.load(reader)
+            reader.close()
+
+            with tf.io.gfile.GFile(valid_tfrecord_meta_path, mode='r') as reader:
+                self.valid_meta_data = json.load(reader)
+            reader.close()
+
+            train_data_size = self.train_meta_data['train_data_size']
+            # for train
+            self.steps_per_epoch = int(train_data_size // self.batch_size) + 1
+            # for warmup
+            self.total_train_steps = self.steps_per_epoch * self.epochs
+
         train_dataset = train_dataset.map(
             map_data_to_mrc_task,
             num_parallel_calls=tf.data.experimental.AUTOTUNE
@@ -215,7 +263,7 @@ class MRCTask:
             validation_data=valid_dataset
         )
 
-        # checkpoint.save(self.model_save_dir)
+        checkpoint.save(self.model_save_dir)
 
     def _ensure_dir_exist(self, _dir):
         if not tf.io.gfile.exists(_dir):
@@ -405,7 +453,7 @@ def get_model_params():
     return collections.defaultdict(
         lambda: None,
         task_name=TASK_NAME,
-        distribution_strategy='one_device',
+        distribution_strategy='tpu',
         epochs=10,
         predict_batch_size=PREDICT_BATCH_SIZE,
         model_save_dir=MODEL_SAVE_DIR,
@@ -438,9 +486,10 @@ def main():
     logging.set_verbosity(logging.INFO)
     task = MRCTask(
         get_model_params(),
+        use_tpu=True,
         use_pretrain=True,
-        use_prev_record=False,
-        batch_size=12,
+        use_prev_record=True,
+        batch_size=128,
         inference_type=None
     )
     return task
