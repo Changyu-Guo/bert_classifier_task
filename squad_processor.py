@@ -498,7 +498,7 @@ def write_predictions(all_examples,
     logging.info("Writing predictions to: %s", output_prediction_file)
     logging.info("Writing nbest to: %s", output_nbest_file)
 
-    all_predictions, all_nbest_json = (
+    all_predictions, all_nbest_json, only_text_predictions = (
         postprocess_output(
             all_examples=all_examples,
             all_features=all_features,
