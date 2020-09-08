@@ -251,19 +251,20 @@ class MRCTask:
                 loss_weights=[0.5, 0.5]
             )
 
-        callbacks = self._create_callbacks()
+        # callbacks = self._create_callbacks()
 
+        print('start fit...')
         model.fit(
             train_dataset,
             initial_epoch=0,
             epochs=self.epochs,
             steps_per_epoch=self.steps_per_epoch,
-            callbacks=callbacks,
-            verbose=1,
+            # callbacks=callbacks,
+            # verbose=1,
             # validation_data=valid_dataset
         )
 
-        checkpoint.save(self.model_save_dir)
+        # checkpoint.save(self.model_save_dir)
 
     def _ensure_dir_exist(self, _dir):
         if not tf.io.gfile.exists(_dir):
