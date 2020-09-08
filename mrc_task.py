@@ -122,21 +122,21 @@ class MRCTask:
                 writer.write(json.dumps(self.train_meta_data, ensure_ascii=False, indent=2))
             writer.close()
 
-            # self.valid_meta_data = generate_valid_tf_record_from_json_file(
-            #     input_file_path=self.valid_input_file_path,
-            #     vocab_file_path=self.vocab_file_path,
-            #     output_path=self.valid_output_file_path,
-            #     max_seq_length=self.max_seq_len,
-            #     do_lower_case=True,
-            #     max_query_length=self.max_query_len,
-            #     doc_stride=self.doc_stride,
-            #     version_2_with_negative=False,
-            #     batch_size=None,
-            #     is_training=True
-            # )
-            # with tf.io.gfile.GFile(self.valid_output_meta_path, mode='w') as writer:
-            #     writer.write(json.dumps(self.valid_meta_data, ensure_ascii=False, indent=2))
-            # writer.close()
+            self.valid_meta_data = generate_valid_tf_record_from_json_file(
+                input_file_path=self.valid_input_file_path,
+                vocab_file_path=self.vocab_file_path,
+                output_path=self.valid_output_file_path,
+                max_seq_length=self.max_seq_len,
+                do_lower_case=True,
+                max_query_length=self.max_query_len,
+                doc_stride=self.doc_stride,
+                version_2_with_negative=False,
+                batch_size=None,
+                is_training=True
+            )
+            with tf.io.gfile.GFile(self.valid_output_meta_path, mode='w') as writer:
+                writer.write(json.dumps(self.valid_meta_data, ensure_ascii=False, indent=2))
+            writer.close()
 
         train_data_size = self.train_meta_data['train_data_size']
         # for train
@@ -152,22 +152,22 @@ class MRCTask:
             repeat=True,
             batch_size=self.batch_size
         )
-        # valid_dataset = read_and_batch_from_squad_tfrecord(
-        #     filename=self.valid_output_file_path,
-        #     max_seq_len=self.max_seq_len,
-        #     is_training=True,  # 这里设置为 True, 使得数据集包含 start / end position
-        #     repeat=False,
-        #     batch_size=self.batch_size
-        # )
+        valid_dataset = read_and_batch_from_squad_tfrecord(
+            filename=self.valid_output_file_path,
+            max_seq_len=self.max_seq_len,
+            is_training=True,  # 这里设置为 True, 使得数据集包含 start / end position
+            repeat=False,
+            batch_size=self.batch_size
+        )
 
-        # train_dataset = train_dataset.map(
-        #     map_data_to_mrc_task,
-        #     num_parallel_calls=tf.data.experimental.AUTOTUNE
-        # )
-        # valid_dataset = valid_dataset.map(
-        #     map_data_to_mrc_task,
-        #     num_parallel_calls=tf.data.experimental.AUTOTUNE
-        # )
+        train_dataset = train_dataset.map(
+            map_data_to_mrc_task,
+            num_parallel_calls=tf.data.experimental.AUTOTUNE
+        )
+        valid_dataset = valid_dataset.map(
+            map_data_to_mrc_task,
+            num_parallel_calls=tf.data.experimental.AUTOTUNE
+        )
 
         # 在 distribution strategy scope 下定义:
         #   1. model
@@ -212,8 +212,7 @@ class MRCTask:
             steps_per_epoch=self.steps_per_epoch,
             callbacks=callbacks,
             verbose=1,
-            validation_split=0.1
-            # validation_data=valid_dataset
+            validation_data=valid_dataset
         )
 
         # checkpoint.save(self.model_save_dir)
