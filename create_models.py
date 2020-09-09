@@ -46,7 +46,7 @@ def create_mrc_model(max_seq_len, is_train=True, use_pretrain=False):
         # TODO: 使用全局变量或局部变量替换掉这里固定的字符串
         bert_model = TFBertModel.from_pretrained('bert-base-chinese')
     else:
-        # 不加载预训练模型，一般在本机测试使用
+        # 不加载预训练模型，一般在本机测试或者是推断的时候使用
         # TODO: 使用全局变量或局部变量替换掉这里固定的字符串
         bert_config = BertConfig.from_json_file(bert_config_file_path)
         bert_model = TFBertModel(bert_config)
@@ -80,8 +80,3 @@ def create_mrc_model(max_seq_len, is_train=True, use_pretrain=False):
     )
 
     return model
-
-
-def _split_output_tensor(tensor):
-    transposed_tensor = tf.transpose(tensor, [2, 0, 1])
-    return tf.unstack(transposed_tensor)

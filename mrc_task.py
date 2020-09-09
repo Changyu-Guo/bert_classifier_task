@@ -329,9 +329,11 @@ class MRCTask:
         for data in dataset:
             # (batch_size, 1)
             unique_ids = data.pop('unique_ids')
-            print(unique_ids.shape)
             # (batch_size, seq_len)
-            start_logits, end_logits = model.predict(map_data_to_mrc_predict_task(data))
+            model_output = model.predict(map_data_to_mrc_predict_task(data))
+
+            start_logits = model_output['start_logits']
+            end_logits = model_output['end_logits']
 
             for result in self.get_raw_results(dict(
                     unique_ids=unique_ids,
@@ -424,7 +426,7 @@ def get_model_params():
         lambda: None,
         task_name=TASK_NAME,
         distribution_strategy='one_device',
-        epochs=3,
+        epochs=10,
         predict_batch_size=PREDICT_BATCH_SIZE,
         model_save_dir=MODEL_SAVE_DIR,
         train_input_file_path=MRC_TRAIN_INPUT_FILE_PATH,
