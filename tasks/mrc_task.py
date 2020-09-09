@@ -9,20 +9,20 @@ import tensorflow as tf
 from absl import logging
 
 import tokenization
-from create_models import create_mrc_model
-from distribu_utils import get_distribution_strategy
-from distribu_utils import get_strategy_scope
-from inputs_pipeline import map_data_to_mrc_predict_task
-from inputs_pipeline import map_data_to_mrc_task
-from inputs_pipeline import read_and_batch_from_squad_tfrecord
+from tasks.create_models import create_mrc_model
+from utils.distribu_utils import get_distribution_strategy
+from utils.distribu_utils import get_strategy_scope
+from data_processors.inputs_pipeline import map_data_to_mrc_predict_task
+from data_processors.inputs_pipeline import map_data_to_mrc_task
+from data_processors.inputs_pipeline import read_and_batch_from_squad_tfrecord
 from optimization import create_optimizer
-from squad_processor import FeatureWriter
-from squad_processor import convert_examples_to_features
-from squad_processor import generate_train_tf_record_from_json_file
-from squad_processor import generate_valid_tf_record_from_json_file
-from squad_processor import postprocess_output
-from squad_processor import read_squad_examples
-from squad_processor import write_to_json_files
+from data_processors.squad_processor import FeatureWriter
+from data_processors.squad_processor import convert_examples_to_features
+from data_processors.squad_processor import generate_train_tf_record_from_json_file
+from data_processors.squad_processor import generate_valid_tf_record_from_json_file
+from data_processors.squad_processor import postprocess_output
+from data_processors.squad_processor import read_squad_examples
+from data_processors.squad_processor import write_to_json_files
 
 
 class MRCTask:
@@ -277,10 +277,11 @@ class MRCTask:
             checkpoint = tf.train.Checkpoint(model=model)
             checkpoint.restore(
                 tf.train.latest_checkpoint(
-                    'saved_models/mrc_v1_epochs_10'
+                    '../saved_models/mrc_v2_epochs_3'
                 )
             )
-            logging.info('Restore checkpoint from {}'.format(tf.train.latest_checkpoint('saved_models/mrc_v1_epochs_10')))
+            logging.info('Restore checkpoint from {}'.format(tf.train.latest_checkpoint(
+                '../saved_models/mrc_v1_epochs_10')))
 
         tokenizer = tokenization.FullTokenizer(
             vocab_file=self.vocab_file_path, do_lower_case=True
@@ -386,25 +387,25 @@ class MRCTask:
 TASK_NAME = 'mrc'
 
 # raw json
-MRC_TRAIN_INPUT_FILE_PATH = 'datasets/preprocessed_datasets/mrc_train.json'
-MRC_VALID_INPUT_FILE_PATH = 'datasets/preprocessed_datasets/mrc_valid.json'
+MRC_TRAIN_INPUT_FILE_PATH = '../datasets/preprocessed_datasets/mrc_train.json'
+MRC_VALID_INPUT_FILE_PATH = '../datasets/preprocessed_datasets/mrc_valid.json'
 
 # tfrecord
-TRAIN_OUTPUT_FILE_PATH = 'datasets/tfrecord_datasets/mrc_train.tfrecord'
-VALID_OUTPUT_FILE_PATH = 'datasets/tfrecord_datasets/mrc_valid.tfrecord'
-PREDICT_VALID_OUTPUT_FILE_PATH = 'datasets/tfrecord_datasets/mrc_predict_valid.tfrecord'
+TRAIN_OUTPUT_FILE_PATH = '../datasets/tfrecord_datasets/mrc_train.tfrecord'
+VALID_OUTPUT_FILE_PATH = '../datasets/tfrecord_datasets/mrc_valid.tfrecord'
+PREDICT_VALID_OUTPUT_FILE_PATH = '../datasets/tfrecord_datasets/mrc_predict_valid.tfrecord'
 
 # tfrecord meta data
-TRAIN_OUTPUT_META_PATH = 'datasets/tfrecord_datasets/mrc_train_meta.json'
-VALID_OUTPUT_META_PATH = 'datasets/tfrecord_datasets/mrc_valid_meta.json'
+TRAIN_OUTPUT_META_PATH = '../datasets/tfrecord_datasets/mrc_train_meta.json'
+VALID_OUTPUT_META_PATH = '../datasets/tfrecord_datasets/mrc_valid_meta.json'
 PREDICT_VALID_OUTPUT_META_PATH = 'datasets/tfrecord_datasets/mrc_predict_valid_meta.json'
 
 # save relate
-MODEL_SAVE_DIR = './saved_models'
-TENSORBOARD_LOG_DIR = './logs/mrc-logs'
+MODEL_SAVE_DIR = '../saved_models'
+TENSORBOARD_LOG_DIR = '../logs/mrc-logs'
 
 # tokenize
-VOCAB_FILE_PATH = 'vocabs/bert-base-chinese-vocab.txt'
+VOCAB_FILE_PATH = '../vocabs/bert-base-chinese-vocab.txt'
 
 # dataset process relate
 MAX_SEQ_LEN = 165
@@ -418,7 +419,7 @@ LEARNING_RATE = 3e-5
 # inference relate
 N_BEST_SIZE = 20
 MAX_ANSWER_LENGTH = 30
-INFERENCE_RESULTS_SAVE_DIR = 'inference_results/mrc_results'
+INFERENCE_RESULTS_SAVE_DIR = '../inference_results/mrc_results'
 
 
 def get_model_params():
@@ -469,4 +470,4 @@ def main():
 
 if __name__ == '__main__':
     task = main()
-    task.train()
+    task.predict_output()

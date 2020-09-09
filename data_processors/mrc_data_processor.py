@@ -5,27 +5,25 @@
     Convert MRC data to squad format.
 """
 
-import os
 import json
 import collections
 import tensorflow as tf
-from data_processor import load_init_train_txt
-from data_processor import extract_relations_from_init_train_table
+from data_processors.multi_label_cls_data_processor import load_init_train_txt
+from data_processors.multi_label_cls_data_processor import extract_relations_from_init_train_table
 from utils import get_label_to_id_map
-from squad_processor import read_squad_examples
 
-vocab_filepath = 'vocabs/bert-base-chinese-vocab.txt'
+vocab_filepath = '../vocabs/bert-base-chinese-vocab.txt'
 
 # all relation questions
-relation_questions_txt_path = 'datasets/raw_datasets/relation_questions.txt'
+relation_questions_txt_path = '../datasets/raw_datasets/relation_questions.txt'
 
 # mrc task
-mrc_train_save_path = 'datasets/preprocessed_datasets/mrc_train.json'
-mrc_valid_save_path = 'datasets/preprocessed_datasets/mrc_valid.json'
+mrc_train_save_path = '../datasets/preprocessed_datasets/mrc_train.json'
+mrc_valid_save_path = '../datasets/preprocessed_datasets/mrc_valid.json'
 
 # classification task
-cls_train_save_path = 'datasets/preprocessed_datasets/cls_train.json'
-cls_valid_save_path = 'datasets/preprocessed_datasets/cls_valid.json'
+cls_train_save_path = '../datasets/preprocessed_datasets/cls_train.json'
+cls_valid_save_path = '../datasets/preprocessed_datasets/cls_valid.json'
 
 
 class InitTrainExample:

@@ -3,8 +3,7 @@
 import json
 import tensorflow as tf
 from tokenizers import BertWordPieceTokenizer
-from data_processor import extract_examples_from_init_train
-from mrc_data_processor import extract_examples_from_relation_questions
+from data_processors.multi_label_cls_data_processor import extract_examples_from_init_train
 
 tokenizer = BertWordPieceTokenizer('vocabs/bert-base-chinese-vocab.txt')
 

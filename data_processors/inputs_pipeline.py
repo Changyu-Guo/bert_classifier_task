@@ -2,7 +2,6 @@
 
 import json
 import tensorflow as tf
-from data_processor import Feature, FeaturesWriter
 
 
 def load_desc(path):

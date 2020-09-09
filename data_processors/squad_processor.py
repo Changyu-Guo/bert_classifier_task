@@ -906,11 +906,11 @@ def generate_valid_tf_record_from_json_file(
 
 
 if __name__ == '__main__':
-    vocab_file = 'vocabs/bert-base-chinese-vocab.txt'
-    train_input_file_path = 'datasets/preprocessed_datasets/mrc_train.json'
-    valid_input_file_path = 'datasets/preprocessed_datasets/mrc_valid.json'
-    train_output_file_path = 'datasets/tfrecord_datasets/mrc_train.tfrecord'
-    valid_output_file_path = 'datasets/tfrecord_datasets/mrc_valid.tfrecord'
+    vocab_file = '../vocabs/bert-base-chinese-vocab.txt'
+    train_input_file_path = '../datasets/preprocessed_datasets/mrc_train.json'
+    valid_input_file_path = '../datasets/preprocessed_datasets/mrc_valid.json'
+    train_output_file_path = '../datasets/tfrecord_datasets/mrc_train.tfrecord'
+    valid_output_file_path = '../datasets/tfrecord_datasets/mrc_valid.tfrecord'
 
     max_seq_len = 200
     max_query_len = 32
