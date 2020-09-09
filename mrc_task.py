@@ -270,11 +270,14 @@ class MRCTask:
 
     def predict_output(self):
         with get_strategy_scope(self.distribution_strategy):
-            model = create_mrc_model(is_train=False, use_pretrain=False)
+            model = create_mrc_model(
+                max_seq_len=self.max_seq_len,
+                is_train=False, use_pretrain=False
+            )
             checkpoint = tf.train.Checkpoint(model=model)
             checkpoint.restore(
                 tf.train.latest_checkpoint(
-                    'saved_models/mrc_v3_epochs_15'
+                    'saved_models/mrc_v5_epochs_2'
                 )
             )
 
@@ -300,7 +303,7 @@ class MRCTask:
                 valid_features.append(feature)
             valid_writer.process_feature(feature)
 
-        dataset_size = convert_examples_to_features(
+        convert_examples_to_features(
             examples=valid_examples,
             tokenizer=tokenizer,
             max_seq_length=self.max_seq_len,
@@ -436,7 +439,7 @@ def get_model_params():
         end_lr=0.0,
         warmup_steps_ratio=0.1,
         time_prefix=time.strftime('%Y_%m_%d', time.localtime()),  # 年_月_日
-        enable_checkpointing=True,
+        enable_checkpointing=False,
         enable_tensorboard=True,
         tensorboard_log_dir=TENSORBOARD_LOG_DIR,
         n_best_size=N_BEST_SIZE,
