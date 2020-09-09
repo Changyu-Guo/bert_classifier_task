@@ -118,10 +118,16 @@ def read_and_batch_from_squad_tfrecord(
 
 
 def map_data_to_mrc_task(data):
-    return (
-        (data['input_ids'], data['input_mask'], data['segment_ids']),
-        data['start_positions'], data['end_positions']
-    )
+    x = {
+        'input_ids': data['input_ids'],
+        'input_mask': data['input_mask'],
+        'segment_ids': data['segment_ids']
+    }
+    y = {
+        'start_logits': data['start_positions'],
+        'end_logits': data['end_positions']
+    }
+    return x, y
 
 
 def map_data_to_mrc_predict_task(data):

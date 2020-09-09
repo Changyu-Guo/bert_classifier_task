@@ -34,13 +34,13 @@ def create_cls_model(num_labels, is_train=True, use_pretrain=False):
     return model
 
 
-def create_mrc_model(is_train=True, use_pretrain=False):
+def create_mrc_model(max_seq_len, is_train=True, use_pretrain=False):
     bert_config_file_path = 'config/bert-base-chinese-config.json'
 
     # 输入
-    inputs_ids = tf.keras.Input((None,), name='inputs_ids', dtype=tf.int64)
-    inputs_mask = tf.keras.Input((None,), name='inputs_mask', dtype=tf.int64)
-    segment_ids = tf.keras.Input((None,), name='segment_ids', dtype=tf.int64)
+    inputs_ids = tf.keras.Input((max_seq_len,), name='inputs_ids', dtype=tf.int64)
+    inputs_mask = tf.keras.Input((max_seq_len,), name='inputs_mask', dtype=tf.int64)
+    segment_ids = tf.keras.Input((max_seq_len,), name='segment_ids', dtype=tf.int64)
 
     if use_pretrain:
         # TODO: 使用全局变量或局部变量替换掉这里固定的字符串
@@ -51,26 +51,32 @@ def create_mrc_model(is_train=True, use_pretrain=False):
         bert_config = BertConfig.from_json_file(bert_config_file_path)
         bert_model = TFBertModel(bert_config)
 
-    bert_output = bert_model([inputs_ids, inputs_mask, segment_ids], training=is_train)
+    bert_output = bert_model({
+        'input_ids': inputs_ids,
+        'attention_mask': inputs_mask,
+        'token_type_ids': segment_ids
+    }, training=is_train)
 
     # 最后一层所有输出
     # (batch_size, seq_len, hidden_size)
     embedding = bert_output[0]
 
-    if is_train:
-        embedding = tf.keras.layers.Dropout(rate=0.1)(embedding)
+    start_logits = tf.keras.layers.Dense(1, use_bias=False)(embedding)
+    start_logits = tf.keras.layers.Flatten(name='start_logits')(start_logits)
 
-    intermediate_logits = tf.keras.layers.Dense(
-        2,
-        kernel_initializer=tf.keras.initializers.TruncatedNormal(stddev=0.02)
-    )(embedding)
-
-    # (batch_size, seq_len, 1)
-    start_logits, end_logits = tf.keras.layers.Lambda(_split_output_tensor)(intermediate_logits)
+    end_logits = tf.keras.layers.Dense(1, use_bias=False)(embedding)
+    end_logits = tf.keras.layers.Flatten(name='end_logits')(end_logits)
 
     model = tf.keras.Model(
-        inputs=[inputs_ids, inputs_mask, segment_ids],
-        outputs=[start_logits, end_logits]
+        inputs={
+            'input_ids': inputs_ids,
+            'input_mask': inputs_mask,
+            'segment_ids': segment_ids
+        },
+        outputs={
+            'start_logits': start_logits,
+            'end_logits': end_logits
+        }
     )
 
     return model

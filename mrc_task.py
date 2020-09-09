@@ -1,25 +1,27 @@
 # -*- coding: utf - 8 -*-
 
-import os
-import json
-import time
 import collections
+import json
+import os
+import time
+
 import tensorflow as tf
 from absl import logging
+
+import tokenization
 from create_models import create_mrc_model
 from distribu_utils import get_distribution_strategy
 from distribu_utils import get_strategy_scope
-from optimization import create_optimizer
-import tokenization
-from inputs_pipeline import read_and_batch_from_squad_tfrecord
-from inputs_pipeline import map_data_to_mrc_task
 from inputs_pipeline import map_data_to_mrc_predict_task
+from inputs_pipeline import map_data_to_mrc_task
+from inputs_pipeline import read_and_batch_from_squad_tfrecord
+from optimization import create_optimizer
 from squad_processor import FeatureWriter
-from squad_processor import read_squad_examples
 from squad_processor import convert_examples_to_features
 from squad_processor import generate_train_tf_record_from_json_file
 from squad_processor import generate_valid_tf_record_from_json_file
 from squad_processor import postprocess_output
+from squad_processor import read_squad_examples
 from squad_processor import write_to_json_files
 
 
@@ -104,109 +106,73 @@ class MRCTask:
         self.distribution_strategy = get_distribution_strategy(self.distribution_strategy, num_gpus=1)
 
     def train(self):
-        # self._ensure_dir_exist(self.model_save_dir)
-        # self._ensure_dir_exist(self.tensorboard_log_dir)
+        self._ensure_dir_exist(self.model_save_dir)
+        self._ensure_dir_exist(self.tensorboard_log_dir)
 
         # convert examples to tfrecord or load
-        # if self.use_prev_record:
-        #
-        #     with tf.io.gfile.GFile(self.train_output_meta_path, mode='r') as reader:
-        #         self.train_meta_data = json.load(reader)
-        #     reader.close()
-        #
-        #     with tf.io.gfile.GFile(self.valid_output_meta_path, mode='r') as reader:
-        #         self.valid_meta_data = json.load(reader)
-        #     reader.close()
-        #
-        # else:
-        #
-        #     self.train_meta_data = generate_train_tf_record_from_json_file(
-        #         input_file_path=self.train_input_file_path,
-        #         vocab_file_path=self.vocab_file_path,
-        #         output_path=self.train_output_file_path,
-        #         max_seq_length=self.max_seq_len,
-        #         do_lower_case=True,
-        #         max_query_length=self.max_query_len,
-        #         doc_stride=self.doc_stride,
-        #         version_2_with_negative=False
-        #     )
-        #     with tf.io.gfile.GFile(self.train_output_meta_path, mode='w') as writer:
-        #         writer.write(json.dumps(self.train_meta_data, ensure_ascii=False, indent=2))
-        #     writer.close()
-        #
-        #     self.valid_meta_data = generate_valid_tf_record_from_json_file(
-        #         input_file_path=self.valid_input_file_path,
-        #         vocab_file_path=self.vocab_file_path,
-        #         output_path=self.valid_output_file_path,
-        #         max_seq_length=self.max_seq_len,
-        #         do_lower_case=True,
-        #         max_query_length=self.max_query_len,
-        #         doc_stride=self.doc_stride,
-        #         version_2_with_negative=False,
-        #         batch_size=None,
-        #         is_training=True
-        #     )
-        #     with tf.io.gfile.GFile(self.valid_output_meta_path, mode='w') as writer:
-        #         writer.write(json.dumps(self.valid_meta_data, ensure_ascii=False, indent=2))
-        #     writer.close()
-        #
-        # train_data_size = self.train_meta_data['train_data_size']
-        # # for train
-        # self.steps_per_epoch = int(train_data_size // self.batch_size) + 1
-        # # for warmup
-        # self.total_train_steps = self.steps_per_epoch * self.epochs
-        #
-        # # load tfrecord and transform
-        # train_dataset = read_and_batch_from_squad_tfrecord(
-        #     filename=self.train_output_file_path,
-        #     max_seq_len=self.max_seq_len,
-        #     is_training=True,
-        #     repeat=True,
-        #     batch_size=self.batch_size
-        # )
-        # valid_dataset = read_and_batch_from_squad_tfrecord(
-        #     filename=self.valid_output_file_path,
-        #     max_seq_len=self.max_seq_len,
-        #     is_training=True,  # 这里设置为 True, 使得数据集包含 start / end position
-        #     repeat=False,
-        #     batch_size=self.batch_size
-        # )
+        if self.use_prev_record:
 
-        # 专门用 TPU 训练 squad，后面可以删掉
-        if self.use_tpu:
-            self.model_save_dir = 'gs://leeyu-dataset-public'
-            self.tensorboard_log_dir = 'gs://leeyu-dataset-public'
-            train_tfrecord_path = tf.io.gfile.glob('gs://leeyu-dataset-public/squad_train.tfrecord')[0]
-            valid_tfrecord_path = tf.io.gfile.glob('gs://leeyu-dataset-public/squad_valid.tfrecord')[0]
-            train_tfrecord_meta_path = tf.io.gfile.glob('gs://leeyu-dataset-public/squad_train_meta.json')[0]
-            valid_tfrecord_meta_path = tf.io.gfile.glob('gs://leeyu-dataset-public/squad_valid_meta.json')[0]
-            train_dataset = read_and_batch_from_squad_tfrecord(
-                filename=train_tfrecord_path,
-                max_seq_len=self.max_seq_len,
-                is_training=True,
-                repeat=True,
-                batch_size=self.batch_size
-            )
-            valid_dataset = read_and_batch_from_squad_tfrecord(
-                filename=valid_tfrecord_path,
-                max_seq_len=self.max_seq_len,
-                is_training=True,
-                repeat=False,
-                batch_size=self.batch_size
-            )
-            with tf.io.gfile.GFile(train_tfrecord_meta_path, mode='r') as reader:
+            with tf.io.gfile.GFile(self.train_output_meta_path, mode='r') as reader:
                 self.train_meta_data = json.load(reader)
             reader.close()
 
-            with tf.io.gfile.GFile(valid_tfrecord_meta_path, mode='r') as reader:
+            with tf.io.gfile.GFile(self.valid_output_meta_path, mode='r') as reader:
                 self.valid_meta_data = json.load(reader)
             reader.close()
 
-            train_data_size = self.train_meta_data['train_data_size']
-            # for train
-            self.steps_per_epoch = int(train_data_size // self.batch_size) + 1
-            # for warmup
-            self.total_train_steps = self.steps_per_epoch * self.epochs
+        else:
+
+            self.train_meta_data = generate_train_tf_record_from_json_file(
+                input_file_path=self.train_input_file_path,
+                vocab_file_path=self.vocab_file_path,
+                output_path=self.train_output_file_path,
+                max_seq_length=self.max_seq_len,
+                do_lower_case=True,
+                max_query_length=self.max_query_len,
+                doc_stride=self.doc_stride,
+                version_2_with_negative=False
+            )
+            with tf.io.gfile.GFile(self.train_output_meta_path, mode='w') as writer:
+                writer.write(json.dumps(self.train_meta_data, ensure_ascii=False, indent=2))
+            writer.close()
+
+            self.valid_meta_data = generate_valid_tf_record_from_json_file(
+                input_file_path=self.valid_input_file_path,
+                vocab_file_path=self.vocab_file_path,
+                output_path=self.valid_output_file_path,
+                max_seq_length=self.max_seq_len,
+                do_lower_case=True,
+                max_query_length=self.max_query_len,
+                doc_stride=self.doc_stride,
+                version_2_with_negative=False,
+                batch_size=None,
+                is_training=True
+            )
+            with tf.io.gfile.GFile(self.valid_output_meta_path, mode='w') as writer:
+                writer.write(json.dumps(self.valid_meta_data, ensure_ascii=False, indent=2))
+            writer.close()
+
+        train_data_size = self.train_meta_data['train_data_size']
+        # for train
+        self.steps_per_epoch = int(train_data_size // self.batch_size) + 1
+        # for warmup
+        self.total_train_steps = self.steps_per_epoch * self.epochs
+
+        # load tfrecord and transform
+        train_dataset = read_and_batch_from_squad_tfrecord(
+            filename=self.train_output_file_path,
+            max_seq_len=self.max_seq_len,
+            is_training=True,
+            repeat=True,
+            batch_size=self.batch_size
+        )
+        valid_dataset = read_and_batch_from_squad_tfrecord(
+            filename=self.valid_output_file_path,
+            max_seq_len=self.max_seq_len,
+            is_training=True,  # 这里设置为 True, 使得数据集包含 start / end position
+            repeat=False,
+            batch_size=self.batch_size
+        )
 
         train_dataset = train_dataset.map(
             map_data_to_mrc_task,
@@ -224,7 +190,11 @@ class MRCTask:
         #   4. compile
         with get_strategy_scope(self.distribution_strategy):
 
-            model = create_mrc_model(is_train=True, use_pretrain=self.use_pretrain)
+            model = create_mrc_model(
+                max_seq_len=self.max_seq_len,
+                is_train=True,
+                use_pretrain=self.use_pretrain
+            )
             optimizer = self._create_optimizer()
 
             # load checkpoint
@@ -238,33 +208,26 @@ class MRCTask:
                 checkpoint.restore(latest_checkpoint)
                 logging.info('Load checkpoint {} from {}'.format(latest_checkpoint, self.model_save_dir))
 
+            loss_f = tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True)
             model.compile(
                 optimizer=optimizer,
-                loss=[
-                    tf.keras.losses.SparseCategoricalCrossentropy(
-                        from_logits=True
-                    ),
-                    tf.keras.losses.SparseCategoricalCrossentropy(
-                        from_logits=True
-                    )
-                ],
+                loss=[loss_f, loss_f],
                 loss_weights=[0.5, 0.5]
             )
 
-        # callbacks = self._create_callbacks()
+        callbacks = self._create_callbacks()
 
-        print('start fit...')
         model.fit(
             train_dataset,
             initial_epoch=0,
             epochs=self.epochs,
             steps_per_epoch=self.steps_per_epoch,
-            # callbacks=callbacks,
-            # verbose=1,
-            # validation_data=valid_dataset
+            callbacks=callbacks,
+            verbose=1,
+            validation_data=valid_dataset
         )
 
-        # checkpoint.save(self.model_save_dir)
+        checkpoint.save(self.model_save_dir)
 
     def _ensure_dir_exist(self, _dir):
         if not tf.io.gfile.exists(_dir):
@@ -364,9 +327,9 @@ class MRCTask:
             start_logits, end_logits = model.predict(map_data_to_mrc_predict_task(data))
 
             for result in self.get_raw_results(dict(
-                unique_ids=unique_ids,
-                start_logits=start_logits,
-                end_logits=end_logits
+                    unique_ids=unique_ids,
+                    start_logits=start_logits,
+                    end_logits=end_logits
             )):
                 all_results.append(result)
 
@@ -388,9 +351,9 @@ class MRCTask:
             ['unique_id', 'start_logits', 'end_logits']
         )
         for unique_id, start_logits, end_logits in zip(
-            predictions['unique_ids'],
-            predictions['start_logits'],
-            predictions['end_logits']
+                predictions['unique_ids'],
+                predictions['start_logits'],
+                predictions['end_logits']
         ):
             yield RawResult(
                 unique_id=unique_id.numpy(),
@@ -414,17 +377,17 @@ class MRCTask:
 TASK_NAME = 'mrc'
 
 # raw json
-MRC_TRAIN_INPUT_FILE_PATH = 'datasets/preprocessed_datasets/train-v1.1.json'
-MRC_VALID_INPUT_FILE_PATH = 'datasets/preprocessed_datasets/dev-v1.1.json'
+MRC_TRAIN_INPUT_FILE_PATH = 'datasets/preprocessed_datasets/mrc_train.json'
+MRC_VALID_INPUT_FILE_PATH = 'datasets/preprocessed_datasets/mrc_valid.json'
 
 # tfrecord
-TRAIN_OUTPUT_FILE_PATH = 'datasets/tfrecord_datasets/squad_train.tfrecord'
-VALID_OUTPUT_FILE_PATH = 'datasets/tfrecord_datasets/squad_valid.tfrecord'
-PREDICT_VALID_OUTPUT_FILE_PATH = 'datasets/tfrecord_datasets/squad_predict_valid.tfrecord'
+TRAIN_OUTPUT_FILE_PATH = 'datasets/tfrecord_datasets/mrc_train.tfrecord'
+VALID_OUTPUT_FILE_PATH = 'datasets/tfrecord_datasets/mrc_valid.tfrecord'
+PREDICT_VALID_OUTPUT_FILE_PATH = 'datasets/tfrecord_datasets/mrc_predict_valid.tfrecord'
 
 # tfrecord meta data
-TRAIN_OUTPUT_META_PATH = 'datasets/tfrecord_datasets/squad_train_meta.json'
-VALID_OUTPUT_META_PATH = 'datasets/tfrecord_datasets/squad_valid_meta.json'
+TRAIN_OUTPUT_META_PATH = 'datasets/tfrecord_datasets/mrc_train_meta.json'
+VALID_OUTPUT_META_PATH = 'datasets/tfrecord_datasets/mrc_valid_meta.json'
 PREDICT_VALID_OUTPUT_META_PATH = 'datasets/tfrecord_datasets/mrc_predict_valid_meta.json'
 
 # save relate
@@ -432,11 +395,11 @@ MODEL_SAVE_DIR = './saved_models'
 TENSORBOARD_LOG_DIR = './logs/mrc-logs'
 
 # tokenize
-VOCAB_FILE_PATH = 'vocabs/bert-base-uncased-vocab.txt'
+VOCAB_FILE_PATH = 'vocabs/bert-base-chinese-vocab.txt'
 
 # dataset process relate
-MAX_SEQ_LEN = 384
-MAX_QUERY_LEN = 64
+MAX_SEQ_LEN = 248
+MAX_QUERY_LEN = 32
 DOC_STRIDE = 128
 PREDICT_BATCH_SIZE = 128
 
@@ -450,12 +413,11 @@ INFERENCE_RESULTS_SAVE_DIR = 'inference_results/mrc_results'
 
 
 def get_model_params():
-
     return collections.defaultdict(
         lambda: None,
         task_name=TASK_NAME,
-        distribution_strategy='tpu',
-        epochs=10,
+        distribution_strategy='one_device',
+        epochs=15,
         predict_batch_size=PREDICT_BATCH_SIZE,
         model_save_dir=MODEL_SAVE_DIR,
         train_input_file_path=MRC_TRAIN_INPUT_FILE_PATH,
@@ -474,8 +436,8 @@ def get_model_params():
         end_lr=0.0,
         warmup_steps_ratio=0.1,
         time_prefix=time.strftime('%Y_%m_%d', time.localtime()),  # 年_月_日
-        enable_checkpointing=False,
-        enable_tensorboard=False,
+        enable_checkpointing=True,
+        enable_tensorboard=True,
         tensorboard_log_dir=TENSORBOARD_LOG_DIR,
         n_best_size=N_BEST_SIZE,
         max_answer_len=MAX_ANSWER_LENGTH,
@@ -487,10 +449,10 @@ def main():
     logging.set_verbosity(logging.INFO)
     task = MRCTask(
         get_model_params(),
-        use_tpu=True,
+        use_tpu=False,
         use_pretrain=True,
-        use_prev_record=True,
-        batch_size=128,
+        use_prev_record=False,
+        batch_size=32,
         inference_type=None
     )
     return task
