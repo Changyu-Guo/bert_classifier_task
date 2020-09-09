@@ -44,7 +44,7 @@ def create_mrc_model(max_seq_len, is_train=True, use_pretrain=False):
 
     if use_pretrain:
         # TODO: 使用全局变量或局部变量替换掉这里固定的字符串
-        bert_model = TFBertModel.from_pretrained('bert-base-uncased')
+        bert_model = TFBertModel.from_pretrained('bert-base-chinese')
     else:
         # 不加载预训练模型，一般在本机测试使用
         # TODO: 使用全局变量或局部变量替换掉这里固定的字符串

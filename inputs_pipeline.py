@@ -131,4 +131,8 @@ def map_data_to_mrc_task(data):
 
 
 def map_data_to_mrc_predict_task(data):
-    return data['input_ids'], data['input_mask'], data['segment_ids']
+    return {
+        'input_ids': data['input_ids'],
+        'input_mask': data['input_mask'],
+        'segment_ids': data['segment_ids']
+    }

@@ -277,9 +277,10 @@ class MRCTask:
             checkpoint = tf.train.Checkpoint(model=model)
             checkpoint.restore(
                 tf.train.latest_checkpoint(
-                    'saved_models/mrc_v5_epochs_2'
+                    'saved_models/mrc_v1_epochs_10'
                 )
             )
+            logging.info('Restore checkpoint from {}'.format(tf.train.latest_checkpoint('saved_models/mrc_v1_epochs_10')))
 
         tokenizer = tokenization.FullTokenizer(
             vocab_file=self.vocab_file_path, do_lower_case=True
@@ -326,7 +327,10 @@ class MRCTask:
         # predict
         all_results = []
         for data in dataset:
+            # (batch_size, 1)
             unique_ids = data.pop('unique_ids')
+            print(unique_ids.shape)
+            # (batch_size, seq_len)
             start_logits, end_logits = model.predict(map_data_to_mrc_predict_task(data))
 
             for result in self.get_raw_results(dict(
