@@ -417,7 +417,7 @@ def get_model_params():
         lambda: None,
         task_name=TASK_NAME,
         distribution_strategy='one_device',
-        epochs=15,
+        epochs=2,
         predict_batch_size=PREDICT_BATCH_SIZE,
         model_save_dir=MODEL_SAVE_DIR,
         train_input_file_path=MRC_TRAIN_INPUT_FILE_PATH,
