@@ -451,7 +451,7 @@ def main():
         get_model_params(),
         use_tpu=False,
         use_pretrain=True,
-        use_prev_record=False,
+        use_prev_record=True,
         batch_size=32,
         inference_type=None
     )
