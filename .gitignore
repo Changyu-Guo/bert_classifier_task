@@ -5,5 +5,3 @@
 /logs
 
 /pretrained_model
-
-datasets/tfrecord_datasets/squad*
