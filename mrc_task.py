@@ -398,8 +398,8 @@ TENSORBOARD_LOG_DIR = './logs/mrc-logs'
 VOCAB_FILE_PATH = 'vocabs/bert-base-chinese-vocab.txt'
 
 # dataset process relate
-MAX_SEQ_LEN = 248
-MAX_QUERY_LEN = 32
+MAX_SEQ_LEN = 165
+MAX_QUERY_LEN = 45
 DOC_STRIDE = 128
 PREDICT_BATCH_SIZE = 128
 
@@ -452,7 +452,7 @@ def main():
         use_tpu=False,
         use_pretrain=True,
         use_prev_record=True,
-        batch_size=32,
+        batch_size=48,
         inference_type=None
     )
     return task
