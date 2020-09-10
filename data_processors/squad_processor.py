@@ -172,9 +172,9 @@ def read_squad_examples(input_file, is_training, version_2_with_negative):
 
                     if version_2_with_negative:
                         is_impossible = qa["is_impossible"]
-                    # if (len(qa["answers"]) != 1) and (not is_impossible):
-                    #     raise ValueError(
-                    #         "For training, each question should have exactly 1 answer.")
+                    if (len(qa["answers"]) != 1) and (not is_impossible):
+                        raise ValueError(
+                            "For training, each question should have exactly 1 answer.")
                     if not is_impossible:
                         answer = qa["answers"][0]
                         orig_answer_text = answer["text"]
@@ -189,8 +189,7 @@ def read_squad_examples(input_file, is_training, version_2_with_negative):
                         #
                         # Note that this means for training mode, every example is NOT
                         # guaranteed to be preserved.
-                        actual_text = " ".join(doc_tokens[start_position:(end_position +
-                                                                          1)])
+                        actual_text = " ".join(doc_tokens[start_position:(end_position +1)])
                         cleaned_answer_text = " ".join(
                             tokenization.whitespace_tokenize(orig_answer_text))
                         if actual_text.find(cleaned_answer_text) == -1:
@@ -906,12 +905,4 @@ def generate_valid_tf_record_from_json_file(
 
 
 if __name__ == '__main__':
-    vocab_file = '../vocabs/bert-base-chinese-vocab.txt'
-    train_input_file_path = '../datasets/preprocessed_datasets/mrc_train.json'
-    valid_input_file_path = '../datasets/preprocessed_datasets/mrc_valid.json'
-    train_output_file_path = '../datasets/tfrecord_datasets/mrc_train.tfrecord'
-    valid_output_file_path = '../datasets/tfrecord_datasets/mrc_valid.tfrecord'
-
-    max_seq_len = 200
-    max_query_len = 32
-    doc_stride = 128
+    pass

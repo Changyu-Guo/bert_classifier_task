@@ -1,21 +1,21 @@
 # -*- coding: utf - 8 -*-
 
-import collections
-import json
 import os
+import json
 import time
+import collections
 
 import tensorflow as tf
 from absl import logging
 
 import tokenization
-from tasks.create_models import create_mrc_model
+from optimization import create_optimizer
+from create_models import create_mrc_model
 from utils.distribu_utils import get_distribution_strategy
 from utils.distribu_utils import get_strategy_scope
 from data_processors.inputs_pipeline import map_data_to_mrc_predict_task
 from data_processors.inputs_pipeline import map_data_to_mrc_task
 from data_processors.inputs_pipeline import read_and_batch_from_squad_tfrecord
-from optimization import create_optimizer
 from data_processors.squad_processor import FeatureWriter
 from data_processors.squad_processor import convert_examples_to_features
 from data_processors.squad_processor import generate_train_tf_record_from_json_file
@@ -30,31 +30,24 @@ class MRCTask:
     def __init__(
             self,
             kwargs,
-            use_tpu=False,
             use_pretrain=None,
             use_prev_record=False,
             batch_size=None,
-            inference_type=None
+            inference_model_dir=None
     ):
 
         # param check
         if use_pretrain is None:
             raise ValueError('Param use_pretrain must be passed')
 
-        if use_tpu and not use_prev_record:
-            raise ValueError('use_prev_record must be True when use tpu')
-
-        self.use_tpu = use_tpu
         self.batch_size = batch_size
         self.use_pretrain = use_pretrain
-        self.inference_type = inference_type
         self.use_prev_record = use_prev_record
+        self.inference_model_dir = inference_model_dir
 
         self.task_name = kwargs['task_name']
-        self.distribution_strategy = kwargs['distribution_strategy']
-        self.epochs = kwargs['epochs']
-        self.predict_batch_size = kwargs['predict_batch_size']
 
+        # data
         self.train_input_file_path = kwargs['train_input_file_path']
         self.valid_input_file_path = kwargs['valid_input_file_path']
         self.train_output_file_path = kwargs['train_output_file_path']
@@ -62,20 +55,27 @@ class MRCTask:
         self.predict_valid_output_file_path = kwargs['predict_valid_output_file_path']
         self.train_output_meta_path = kwargs['train_output_meta_path']
         self.valid_output_meta_path = kwargs['valid_output_meta_path']
-        self.predict_valid_output_meta_path = kwargs['predict_valid_output_meta_path']
 
-        self.vocab_file_path = kwargs['vocab_file_path']
-
+        # data process
         self.max_seq_len = kwargs['max_seq_len']
         self.max_query_len = kwargs['max_query_len']
         self.doc_stride = kwargs['doc_stride']
 
-        self.enable_checkpointing = kwargs['enable_checkpointing']
-        self.enable_tensorboard = kwargs['enable_tensorboard']
+        # model and tokenizer
+        self.vocab_file_path = kwargs['vocab_file_path']
+
+        # optimizer
         self.init_lr = kwargs['init_lr']
         self.end_lr = kwargs['end_lr']
         self.warmup_steps_ratio = kwargs['warmup_steps_ratio']
 
+        # train
+        self.epochs = kwargs['epochs']
+        self.distribution_strategy = kwargs['distribution_strategy']
+        self.enable_checkpointing = kwargs['enable_checkpointing']
+        self.enable_tensorboard = kwargs['enable_tensorboard']
+
+        # output file
         self.time_prefix = kwargs['time_prefix']
         self.model_save_dir = os.path.join(
             kwargs['model_save_dir'],
@@ -86,10 +86,15 @@ class MRCTask:
             self.time_prefix + '_' + self.task_name + '_' + str(self.epochs)
         )
 
+        # inference
         self.n_best_size = kwargs['n_best_size']
         self.max_answer_len = kwargs['max_answer_len']
         self.inference_results_save_dir = kwargs['inference_results_save_dir']
+        self.predict_batch_size = kwargs['predict_batch_size']
 
+        # 如果使用之前生成的 tfrecord 文件，则必须有：
+        # 1. tfrecord 文件本身
+        # 2. tfrecord 文件的描述文件
         if use_prev_record:
             if not (kwargs['train_output_file_path'] or kwargs['valid_output_file_path']):
                 raise ValueError(
@@ -106,6 +111,7 @@ class MRCTask:
         self.distribution_strategy = get_distribution_strategy(self.distribution_strategy, num_gpus=1)
 
     def train(self):
+        # 创建文件保存目录
         self._ensure_dir_exist(self.model_save_dir)
         self._ensure_dir_exist(self.tensorboard_log_dir)
 
@@ -208,10 +214,10 @@ class MRCTask:
                 checkpoint.restore(latest_checkpoint)
                 logging.info('Load checkpoint {} from {}'.format(latest_checkpoint, self.model_save_dir))
 
-            loss_f = tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True)
+            loss_func = tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True)
             model.compile(
                 optimizer=optimizer,
-                loss=[loss_f, loss_f],
+                loss=[loss_func, loss_func],
                 loss_weights=[0.5, 0.5]
             )
 
@@ -227,6 +233,7 @@ class MRCTask:
             validation_data=valid_dataset
         )
 
+        # 保存最后一个 epoch 的模型
         checkpoint.save(self.model_save_dir)
 
     def _ensure_dir_exist(self, _dir):
@@ -269,6 +276,7 @@ class MRCTask:
         return callbacks
 
     def predict_output(self):
+
         with get_strategy_scope(self.distribution_strategy):
             model = create_mrc_model(
                 max_seq_len=self.max_seq_len,
@@ -277,11 +285,12 @@ class MRCTask:
             checkpoint = tf.train.Checkpoint(model=model)
             checkpoint.restore(
                 tf.train.latest_checkpoint(
-                    '../saved_models/mrc_v2_epochs_3'
+                    self.inference_model_dir
                 )
             )
-            logging.info('Restore checkpoint from {}'.format(tf.train.latest_checkpoint(
-                '../saved_models/mrc_v1_epochs_10')))
+            logging.info('Restore checkpoint from {}'.format(
+                tf.train.latest_checkpoint(self.inference_model_dir)
+            ))
 
         tokenizer = tokenization.FullTokenizer(
             vocab_file=self.vocab_file_path, do_lower_case=True
@@ -387,25 +396,25 @@ class MRCTask:
 TASK_NAME = 'mrc'
 
 # raw json
-MRC_TRAIN_INPUT_FILE_PATH = '../datasets/preprocessed_datasets/mrc_train.json'
-MRC_VALID_INPUT_FILE_PATH = '../datasets/preprocessed_datasets/mrc_valid.json'
+MRC_TRAIN_INPUT_FILE_PATH = 'datasets/preprocessed_datasets/mrc_train.json'
+MRC_VALID_INPUT_FILE_PATH = 'datasets/preprocessed_datasets/mrc_valid.json'
 
 # tfrecord
-TRAIN_OUTPUT_FILE_PATH = '../datasets/tfrecord_datasets/mrc_train.tfrecord'
-VALID_OUTPUT_FILE_PATH = '../datasets/tfrecord_datasets/mrc_valid.tfrecord'
-PREDICT_VALID_OUTPUT_FILE_PATH = '../datasets/tfrecord_datasets/mrc_predict_valid.tfrecord'
+TRAIN_OUTPUT_FILE_PATH = 'datasets/tfrecord_datasets/mrc_train.tfrecord'
+VALID_OUTPUT_FILE_PATH = 'datasets/tfrecord_datasets/mrc_valid.tfrecord'
+PREDICT_VALID_OUTPUT_FILE_PATH = 'datasets/tfrecord_datasets/mrc_predict_valid.tfrecord'
 
 # tfrecord meta data
-TRAIN_OUTPUT_META_PATH = '../datasets/tfrecord_datasets/mrc_train_meta.json'
-VALID_OUTPUT_META_PATH = '../datasets/tfrecord_datasets/mrc_valid_meta.json'
+TRAIN_OUTPUT_META_PATH = 'datasets/tfrecord_datasets/mrc_train_meta.json'
+VALID_OUTPUT_META_PATH = 'datasets/tfrecord_datasets/mrc_valid_meta.json'
 PREDICT_VALID_OUTPUT_META_PATH = 'datasets/tfrecord_datasets/mrc_predict_valid_meta.json'
 
 # save relate
-MODEL_SAVE_DIR = '../saved_models'
-TENSORBOARD_LOG_DIR = '../logs/mrc-logs'
+MODEL_SAVE_DIR = 'saved_models'
+TENSORBOARD_LOG_DIR = 'logs/mrc-logs'
 
 # tokenize
-VOCAB_FILE_PATH = '../vocabs/bert-base-chinese-vocab.txt'
+VOCAB_FILE_PATH = 'vocabs/bert-base-chinese-vocab.txt'
 
 # dataset process relate
 MAX_SEQ_LEN = 165
@@ -419,7 +428,7 @@ LEARNING_RATE = 3e-5
 # inference relate
 N_BEST_SIZE = 20
 MAX_ANSWER_LENGTH = 30
-INFERENCE_RESULTS_SAVE_DIR = '../inference_results/mrc_results'
+INFERENCE_RESULTS_SAVE_DIR = 'inference_results/mrc_results'
 
 
 def get_model_params():
@@ -437,7 +446,6 @@ def get_model_params():
         predict_valid_output_file_path=PREDICT_VALID_OUTPUT_FILE_PATH,
         train_output_meta_path=TRAIN_OUTPUT_META_PATH,
         valid_output_meta_path=VALID_OUTPUT_META_PATH,
-        predict_valid_output_meta_path=PREDICT_VALID_OUTPUT_META_PATH,
         vocab_file_path=VOCAB_FILE_PATH,
         max_seq_len=MAX_SEQ_LEN,
         max_query_len=MAX_QUERY_LEN,
@@ -446,7 +454,7 @@ def get_model_params():
         end_lr=0.0,
         warmup_steps_ratio=0.1,
         time_prefix=time.strftime('%Y_%m_%d', time.localtime()),  # 年_月_日
-        enable_checkpointing=False,
+        enable_checkpointing=False,  # Notice 开启此选项可能会存储大量的 Checkpoint ####
         enable_tensorboard=True,
         tensorboard_log_dir=TENSORBOARD_LOG_DIR,
         n_best_size=N_BEST_SIZE,
@@ -455,19 +463,18 @@ def get_model_params():
     )
 
 
-def main():
+def mrc_main():
     logging.set_verbosity(logging.INFO)
     task = MRCTask(
         get_model_params(),
-        use_tpu=False,
-        use_pretrain=True,
+        use_pretrain=False,
         use_prev_record=True,
         batch_size=48,
-        inference_type=None
+        inference_model_dir='saved_models/mrc_models/mrc_v3_epochs_10'
     )
     return task
 
 
 if __name__ == '__main__':
-    task = main()
+    task = mrc_main()
     task.predict_output()

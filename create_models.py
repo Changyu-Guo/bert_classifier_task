@@ -14,7 +14,7 @@ def create_multi_label_cls_model(num_labels, is_train=True, use_pretrain=False):
     if use_pretrain:
         bert_model = TFBertModel.from_pretrained('bert-base-chinese')
     else:
-        bert_config = BertConfig.from_json_file('../config/bert-base-chinese-config.json')
+        bert_config = BertConfig.from_json_file('config/bert-base-chinese-config.json')
         bert_model = TFBertModel(bert_config)
 
     bert_output = bert_model([inputs_ids, inputs_mask, segment_ids], training=is_train)
@@ -35,7 +35,7 @@ def create_multi_label_cls_model(num_labels, is_train=True, use_pretrain=False):
 
 
 def create_mrc_model(max_seq_len, is_train=True, use_pretrain=False):
-    bert_config_file_path = '../config/bert-base-chinese-config.json'
+    bert_config_file_path = 'config/bert-base-chinese-config.json'
 
     # 输入
     inputs_ids = tf.keras.Input((max_seq_len,), name='inputs_ids', dtype=tf.int64)
@@ -90,7 +90,7 @@ def create_binary_cls_model(is_train=True, use_pretrain=False):
     if use_pretrain:
         bert_model = TFBertModel.from_pretrained('bert-base-chinese')
     else:
-        bert_config = BertConfig.from_json_file('../config/bert-base-chinese-config.json')
+        bert_config = BertConfig.from_json_file('config/bert-base-chinese-config.json')
         bert_model = TFBertModel(bert_config)
     bert_output = bert_model({
         'input_ids': inputs_ids,

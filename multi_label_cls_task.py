@@ -262,13 +262,13 @@ class ClassifierTask:
 
 
 # Global Variables #####
-DESC_FILE_PATH = '../datasets/tfrecord_datasets/multi_label_cls_all_desc.json'
-MODEL_SAVE_DIR = '../saved_models'
-TFRECORD_FULL_PATH = '../datasets/tfrecord_datasets/multi_label_cls_all.tfrecord'
-TRAIN_TFRECORD_PATH = '../datasets/tfrecord_datasets/multi_label_cls_train.tfrecord'
-VALID_TFRECORD_PATH = '../datasets/tfrecord_datasets/multi_label_cls_valid.tfrecord'
-INFERENCE_RESULTS_DIR = '../inference_results'
-TENSORBOARD_LOG_DIR = '../logs'
+DESC_FILE_PATH = 'datasets/tfrecord_datasets/multi_label_cls_all_desc.json'
+MODEL_SAVE_DIR = 'saved_models'
+TFRECORD_FULL_PATH = 'datasets/tfrecord_datasets/multi_label_cls_all.tfrecord'
+TRAIN_TFRECORD_PATH = 'datasets/tfrecord_datasets/multi_label_cls_train.tfrecord'
+VALID_TFRECORD_PATH = 'datasets/tfrecord_datasets/multi_label_cls_valid.tfrecord'
+INFERENCE_RESULTS_DIR = 'inference_results'
+TENSORBOARD_LOG_DIR = 'logs'
 HISTORY_SAVE_PATH = './saved_models/history.csv'
 
 
@@ -286,7 +286,7 @@ def get_model_params():
         num_labels=desc['num_labels'],
         total_features=desc['total_features'],
         model_save_dir=MODEL_SAVE_DIR,
-        tfrecord_path='../datasets/tfrecord_datasets/multi_label_cls_all.tfrecord',
+        tfrecord_path='datasets/tfrecord_datasets/multi_label_cls_all.tfrecord',
         init_lr=1e-4,
         end_lr=0.0,
         warmup_steps_ratio=0.1,
