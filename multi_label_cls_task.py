@@ -362,7 +362,7 @@ def multi_label_cls_main():
         get_model_params(),
         use_pretrain=True,  # Notice ###
         use_prev_record=True,
-        batch_size=96,  # Notice ###
+        batch_size=80,  # Notice ###
         inference_type='log_inference_tfrecord_time'
     )
     return task
