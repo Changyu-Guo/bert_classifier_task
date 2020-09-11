@@ -14,7 +14,7 @@ from create_models import create_mrc_model
 from utils.distribu_utils import get_distribution_strategy
 from utils.distribu_utils import get_strategy_scope
 from data_processors.inputs_pipeline import map_data_to_mrc_predict_task
-from data_processors.inputs_pipeline import map_data_to_mrc_task
+from data_processors.inputs_pipeline import map_data_to_mrc_train_task
 from data_processors.inputs_pipeline import read_and_batch_from_squad_tfrecord
 from data_processors.squad_processor import FeatureWriter
 from data_processors.squad_processor import convert_examples_to_features
@@ -181,11 +181,11 @@ class MRCTask:
         )
 
         train_dataset = train_dataset.map(
-            map_data_to_mrc_task,
+            map_data_to_mrc_train_task,
             num_parallel_calls=tf.data.experimental.AUTOTUNE
         )
         valid_dataset = valid_dataset.map(
-            map_data_to_mrc_task,
+            map_data_to_mrc_train_task,
             num_parallel_calls=tf.data.experimental.AUTOTUNE
         )
 

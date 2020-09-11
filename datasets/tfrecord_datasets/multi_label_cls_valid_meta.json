@@ -1,0 +1,6 @@
+{
+  "task_type": "multi_label_classification",
+  "data_size": 443,
+  "max_seq_len": 120,
+  "num_labels": 53
+}

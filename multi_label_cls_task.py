@@ -8,12 +8,13 @@ import tensorflow as tf
 import tensorflow_addons as tfa
 from absl import logging
 
+from create_models import create_multi_label_cls_model
 from optimization import create_optimizer
 from utils.distribu_utils import get_distribution_strategy
 from utils.distribu_utils import get_strategy_scope
-from data_processors.inputs_pipeline import read_and_batch_from_tfrecord
-from data_processors.inputs_pipeline import split_dataset
-from data_processors.inputs_pipeline import save_dataset
+from data_processors.multi_label_cls_data_processor import generate_tfrecord_from_json_file
+from data_processors.inputs_pipeline import read_and_batch_from_multi_label_cls_tfrecord
+from data_processors.inputs_pipeline import map_data_to_multi_label_cls_train_task
 from data_processors.multi_label_cls_data_processor import (
     inference,
     inference_tfrecord,
@@ -22,43 +23,146 @@ from data_processors.multi_label_cls_data_processor import (
 )
 
 
-class ClassifierTask:
+class CLSTask:
 
-    def __init__(self, kwargs, use_pretrain=None, batch_size=None, inference_type=None):
+    def __init__(
+            self,
+            kwargs,
+            use_pretrain=False,
+            use_prev_record=False,
+            batch_size=None,
+            inference_type=None
+    ):
+
         if use_pretrain is None:
-            raise ValueError('Param use_pretrain must be pass')
+            raise ValueError('Param use_pretrain must be passed')
+
         self.batch_size = batch_size
         self.use_pretrain = use_pretrain
+        self.use_prev_record = use_prev_record
         self.inference_type = inference_type
 
-        self.distribution_strategy = kwargs['distribution_strategy']
-        self.epochs = kwargs['epochs']
+        self.task_name = kwargs['task_name']
+
+        # data
+        self.train_input_file_path = kwargs['train_input_file_path']
+        self.valid_input_file_path = kwargs['valid_input_file_path']
+        self.train_output_file_path = kwargs['train_output_file_path']
+        self.valid_output_file_path = kwargs['valid_output_file_path']
+        self.train_output_meta_path = kwargs['train_output_meta_path']
+        self.valid_output_meta_path = kwargs['valid_output_meta_path']
+
+        # data process
         self.max_seq_len = kwargs['max_seq_len']
-        self.num_labels = kwargs['num_labels']
-        self.total_features = kwargs['total_features']
-        self.model_save_dir = kwargs['model_save_dir']
-        self.tfrecord_path = kwargs['tfrecord_path']
-        self.train_tfrecord_path = kwargs['train_tfrecord_path']
-        self.valid_tfrecord_path = kwargs['valid_tfrecord_path']
-        self.enable_checkpointing = kwargs['enable_checkpointing']
-        self.enable_tensorboard = kwargs['enable_tensorboard']
+
+        # model and tokenize
+        self.vocab_file_path = kwargs['vocab_file_path']
+
+        # optimizer
         self.init_lr = kwargs['init_lr']
         self.end_lr = kwargs['end_lr']
         self.warmup_steps_ratio = kwargs['warmup_steps_ratio']
-        self.valid_data_ratio = kwargs['valid_data_ratio']
-        self.inference_result_path = kwargs['inference_result_path']
-        self.tensorboard_log_dir = kwargs['tensorboard_log_dir']
-        self.history_save_path = kwargs['history_save_path']
 
-        self.steps_per_epoch = int(
-            (self.total_features * (1 - self.valid_data_ratio)) // self.batch_size
+        # train
+        self.epochs = kwargs['epochs']
+        self.distribution_strategy = kwargs['distribution_strategy']
+        self.enable_checkpointing = kwargs['enable_checkpointing']
+        self.enable_tensorboard = kwargs['enable_tensorboard']
+
+        # output file
+        self.time_prefix = kwargs['time_prefix']
+        self.model_save_dir = os.path.join(
+            kwargs['model_save_dir'],
+            self.time_prefix + '_' + self.task_name + '_' + str(self.epochs)
         )
-        self.total_train_steps = self.steps_per_epoch * self.epochs
+        self.tensorboard_log_dir = os.path.join(
+            kwargs['tensorboard_log_dir'],
+            self.time_prefix + '_' + self.task_name + '_' + str(self.epochs)
+        )
+
+        # inference
+        self.inference_results_save_dir = kwargs['inference_results_save_dir']
+
+        if use_prev_record:
+            if not (kwargs['train_output_file_path'] or kwargs['valid_output_file_path']):
+                raise ValueError(
+                    'Train output file path and valid output file path '
+                    'must be set when use prev record is True'
+                )
+
+            if not (kwargs['train_output_meta_path'] or kwargs['valid_output_meta_path']):
+                raise ValueError(
+                    'Train output meta path and valid output mata path'
+                    'must be set when use prev record is True'
+                )
+
         self.distribution_strategy = get_distribution_strategy(self.distribution_strategy, num_gpus=1)
 
     def train(self):
         self._ensure_dir_exist(self.model_save_dir)
         self._ensure_dir_exist(self.tensorboard_log_dir)
+
+        if self.use_prev_record:
+
+            with tf.io.gfile.GFile(self.train_output_meta_path, mode='r') as reader:
+                self.train_meta_data = json.load(reader)
+            reader.close()
+
+            with tf.io.gfile.GFile(self.valid_output_meta_path, mode='r') as reader:
+                self.valid_meta_data = json.load(reader)
+            reader.close()
+
+        else:
+
+            self.train_meta_data = generate_tfrecord_from_json_file(
+                input_file_path=self.train_input_file_path,
+                vocab_file_path=self.vocab_file_path,
+                output_file_path=self.train_output_file_path,
+                max_seq_len=self.max_seq_len
+            )
+            self.valid_meta_data = generate_tfrecord_from_json_file(
+                input_file_path=self.valid_input_file_path,
+                vocab_file_path=self.vocab_file_path,
+                output_file_path=self.valid_output_file_path,
+                max_seq_len=self.max_seq_len
+            )
+            with tf.io.gfile.GFile(self.train_output_meta_path, mode='w') as writer:
+                writer.write(json.dumps(self.train_meta_data, ensure_ascii=False, indent=2))
+            writer.close()
+            with tf.io.gfile.GFile(self.valid_output_meta_path, mode='w') as writer:
+                writer.write(json.dumps(self.valid_meta_data, ensure_ascii=False, indent=2))
+            writer.close()
+
+        self.num_labels = self.train_meta_data['num_labels']
+        self.train_data_size = self.train_meta_data['data_size']
+        self.steps_per_epoch = int(self.train_data_size // self.batch_size) + 1
+        self.total_train_steps = self.steps_per_epoch * self.epochs
+
+        train_dataset = read_and_batch_from_multi_label_cls_tfrecord(
+            filename=self.train_output_file_path,
+            max_seq_len=self.max_seq_len,
+            num_labels=self.num_labels,
+            shuffle=True,
+            repeat=True,
+            batch_size=self.batch_size
+        )
+        valid_dataset = read_and_batch_from_multi_label_cls_tfrecord(
+            filename=self.valid_output_file_path,
+            max_seq_len=self.max_seq_len,
+            num_labels=self.num_labels,
+            shuffle=True,
+            repeat=False,
+            batch_size=self.batch_size
+        )
+
+        train_dataset = train_dataset.map(
+            map_data_to_multi_label_cls_train_task,
+            num_parallel_calls=tf.data.experimental.AUTOTUNE
+        )
+        valid_dataset = valid_dataset.map(
+            map_data_to_multi_label_cls_train_task,
+            num_parallel_calls=tf.data.experimental.AUTOTUNE
+        )
 
         # 在 distribution strategy scope 下定义:
         #   1. model
@@ -67,7 +171,11 @@ class ClassifierTask:
         #   4. compile
         with get_strategy_scope(self.distribution_strategy):
 
-            model = create_model(self.num_labels, is_train=True, use_pretrain=self.use_pretrain)
+            model = create_multi_label_cls_model(
+                self.num_labels,
+                is_train=True,
+                use_pretrain=self.use_pretrain
+            )
             optimizer = self._create_optimizer()
 
             # load checkpoint
@@ -82,62 +190,14 @@ class ClassifierTask:
 
             model.compile(
                 optimizer=optimizer,
-                loss=tf.keras.losses.BinaryCrossentropy(from_logits=False),
-                metrics=[
-                    tfa.metrics.MultiLabelConfusionMatrix(
-                        num_classes=self.num_labels
-                    )
-                ]
+                loss={
+                    'probs': tf.keras.losses.BinaryCrossentropy(from_logits=False)
+                }
             )
-
-        if tf.io.gfile.exists(self.train_tfrecord_path) and \
-                tf.io.gfile.exists(self.valid_tfrecord_path):
-            train_dataset = read_and_batch_from_tfrecord(
-                self.train_tfrecord_path,
-                max_seq_len=self.max_seq_len,
-                num_labels=self.num_labels,
-                shuffle=True,
-                repeat=True,
-                batch_size=self.batch_size
-            )
-            valid_dataset = read_and_batch_from_tfrecord(
-                self.valid_tfrecord_path,
-                max_seq_len=self.max_seq_len,
-                num_labels=self.num_labels,
-                shuffle=False,
-                repeat=False,
-                batch_size=self.batch_size
-            )
-
-        # 没有切分后的数据
-        # 读取原始数据并切分
-        else:
-            # load dataset
-            dataset = read_and_batch_from_tfrecord(
-                filename=self.tfrecord_path,
-                max_seq_len=self.max_seq_len,
-                num_labels=self.num_labels,
-                shuffle=True,
-                repeat=False,
-                batch_size=None
-            )
-
-            # 切分数据集
-            train_dataset, valid_dataset = split_dataset(
-                dataset,
-                valid_ratio=self.valid_data_ratio,
-                total_features=self.total_features
-            )
-
-            save_dataset(train_dataset, self.train_tfrecord_path)
-            save_dataset(valid_dataset, self.valid_tfrecord_path)
-
-            train_dataset = train_dataset.repeat().batch(self.batch_size)
-            valid_dataset = valid_dataset.batch(self.batch_size)
 
         callbacks = self._create_callbacks()
 
-        his = model.fit(
+        model.fit(
             train_dataset,
             initial_epoch=0,
             epochs=self.epochs,
@@ -147,23 +207,7 @@ class ClassifierTask:
             validation_data=valid_dataset
         )
 
-        checkpoint.save(os.path.join(self.model_save_dir, 'train_end_checkpoint'))
-
-    def eval(self, dataset):
-        with get_strategy_scope(self.distribution_strategy):
-            model = create_model(self.num_labels, is_train=False, use_pretrain=False)
-            self._load_weights_if_possible(
-                model,
-                tf.train.latest_checkpoint(self.model_save_dir)
-            )
-
-        model.compile(
-            loss=tf.keras.losses.BinaryCrossentropy(from_logits=False),
-            metrics=[
-                tf.keras.metrics.BinaryAccuracy(threshold=0.5)
-            ]
-        )
-        model.evaluate(dataset)
+        checkpoint.save(self.model_save_dir)
 
     def predict(self):
         with get_strategy_scope(self.distribution_strategy):
@@ -183,7 +227,7 @@ class ClassifierTask:
             checkpoint = tf.train.Checkpoint(model=model)
             checkpoint.restore(tf.train.latest_checkpoint('../saved_models/classifier_epoch_30'))
 
-        dataset = read_and_batch_from_tfrecord(
+        dataset = read_and_batch_from_multi_label_cls_tfrecord(
             filename=self.train_tfrecord_path,  # Notice ####
             max_seq_len=self.max_seq_len,
             num_labels=self.num_labels,
@@ -196,10 +240,9 @@ class ClassifierTask:
             break
 
         # read validation dataset
-        print('start...')
         batch_sizes = [2000, 1000, 500, 400, 200, 100, 50, 1]
         for batch_size in batch_sizes:
-            dataset = read_and_batch_from_tfrecord(
+            dataset = read_and_batch_from_multi_label_cls_tfrecord(
                 filename=self.train_tfrecord_path,  # Notice ####
                 max_seq_len=self.max_seq_len,
                 num_labels=self.num_labels,
@@ -239,14 +282,6 @@ class ClassifierTask:
 
         return callbacks
 
-    def _load_weights_if_possible(self, model, init_weight_path=None):
-
-        if init_weight_path:
-            logging.info('Load weights: {}'.format(init_weight_path))
-            model.load_weights(init_weight_path)
-        else:
-            logging.info('Weights not loaded from path: {}'.format(init_weight_path))
-
     def _create_optimizer(self):
         return create_optimizer(
             init_lr=self.init_lr,
@@ -262,52 +297,77 @@ class ClassifierTask:
 
 
 # Global Variables #####
-DESC_FILE_PATH = 'datasets/tfrecord_datasets/multi_label_cls_all_desc.json'
-MODEL_SAVE_DIR = 'saved_models'
-TFRECORD_FULL_PATH = 'datasets/tfrecord_datasets/multi_label_cls_all.tfrecord'
-TRAIN_TFRECORD_PATH = 'datasets/tfrecord_datasets/multi_label_cls_train.tfrecord'
-VALID_TFRECORD_PATH = 'datasets/tfrecord_datasets/multi_label_cls_valid.tfrecord'
-INFERENCE_RESULTS_DIR = 'inference_results'
-TENSORBOARD_LOG_DIR = 'logs'
-HISTORY_SAVE_PATH = './saved_models/history.csv'
+
+# task
+TASK_NAME = 'multi_label_cls'
+
+# raw json path
+TRAIN_INPUT_FILE_PATH = 'datasets/preprocessed_datasets/multi_label_cls_train.json'
+VALID_INPUT_FILE_PATH = 'datasets/preprocessed_datasets/multi_label_cls_valid.json'
+
+# tfrecord path
+TRAIN_OUTPUT_FILE_PATH = 'datasets/tfrecord_datasets/multi_label_cls_train.tfrecord'
+VALID_OUTPUT_FILE_PATH = 'datasets/tfrecord_datasets/multi_label_cls_valid.tfrecord'
+
+# tfrecord meta data
+TRAIN_OUTPUT_META_PATH = 'datasets/tfrecord_datasets/multi_label_cls_train_meta.json'
+VALID_OUTPUT_META_PATH = 'datasets/tfrecord_datasets/multi_label_cls_valid_meta.json'
+
+# save relate
+MODEL_SAVE_DIR = 'saved_models/multi_label_cls_models'
+TENSORBOARD_LOG_DIR = 'logs/multi-label-cls-logs'
+
+# tokenize
+VOCAB_FILE_PATH = 'vocabs/bert-base-chinese-vocab.txt'
+
+# dataset process relate
+MAX_SEQ_LEN = 120
+
+# train relate
+LEARNING_RATE = 3e-5
+
+# inference relate
+INFERENCE_RESULTS_SAVE_DIR = 'inference_results/multi_label_cls_results'
 
 
 def get_model_params():
-    # load tfrecord description
-    with tf.io.gfile.GFile(DESC_FILE_PATH, mode='r') as reader:
-        desc = json.load(reader)
-    reader.close()
-
     return collections.defaultdict(
         lambda: None,
+        task_name=TASK_NAME,
         distribution_strategy='one_device',
-        epochs=30,
-        max_seq_len=desc['max_seq_len'],
-        num_labels=desc['num_labels'],
-        total_features=desc['total_features'],
+        epochs=50,
         model_save_dir=MODEL_SAVE_DIR,
-        tfrecord_path='datasets/tfrecord_datasets/multi_label_cls_all.tfrecord',
-        init_lr=1e-4,
+        train_input_file_path=TRAIN_INPUT_FILE_PATH,
+        valid_input_file_path=VALID_INPUT_FILE_PATH,
+        train_output_file_path=TRAIN_OUTPUT_FILE_PATH,
+        valid_output_file_path=VALID_OUTPUT_FILE_PATH,
+        train_output_meta_path=TRAIN_OUTPUT_META_PATH,
+        valid_output_meta_path=VALID_OUTPUT_META_PATH,
+        vocab_file_path=VOCAB_FILE_PATH,
+        max_seq_len=MAX_SEQ_LEN,
+        init_lr=LEARNING_RATE,
         end_lr=0.0,
         warmup_steps_ratio=0.1,
-        valid_data_ratio=0.1,
-        inference_result_path=os.path.join(
-            INFERENCE_RESULTS_DIR,
-            time.strftime('%Y_%m_%d', time.localtime()) + '_result.txt'),
-        train_tfrecord_path=TRAIN_TFRECORD_PATH,
-        valid_tfrecord_path=VALID_TFRECORD_PATH,
+        time_prefix=time.strftime('%Y_%m_%d', time.localtime()),
+        enable_checkpoint=False,
         enable_tensorboard=True,
         tensorboard_log_dir=TENSORBOARD_LOG_DIR,
-        history_save_path=HISTORY_SAVE_PATH
+        inference_results_save_dir=INFERENCE_RESULTS_SAVE_DIR
     )
+
+
+def multi_label_cls_main():
+    logging.set_verbosity(logging.INFO)
+    task = CLSTask(
+        get_model_params(),
+        use_pretrain=True,  # Notice ###
+        use_prev_record=True,
+        batch_size=96,  # Notice ###
+        inference_type='log_inference_tfrecord_time'
+    )
+    return task
 
 
 if __name__ == '__main__':
-    logging.set_verbosity(logging.INFO)
-    task = ClassifierTask(
-        get_model_params(),
-        use_pretrain=False,  # Notice ###
-        batch_size=2,  # Notice ###
-        inference_type='log_inference_tfrecord_time'
-    )
-    task.predict_with_tfrecord()
+    task = multi_label_cls_main()
+    task.train()

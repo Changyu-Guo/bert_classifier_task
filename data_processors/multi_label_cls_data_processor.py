@@ -14,35 +14,49 @@ from tokenizers import BertWordPieceTokenizer
 from custom_metrics import compute_prf
 from sklearn.metrics import precision_recall_fscore_support
 from sklearn.metrics import classification_report
-from utils import *
+from utils.data_utils import get_label_to_id_map
+from utils.data_utils import ids_to_vector
 
-init_train_table_txt_path = '../datasets/raw_datasets/init-train-table.txt'
-init_train_txt_path = '../datasets/raw_datasets/init-train.txt'
-tfrecord_save_path = '../datasets/tfrecord_datasets/multi_label_cls_all.tfrecord'
-desc_json_save_path = '../datasets/tfrecord_datasets/multi_label_cls_all_desc.json'
-vocab_filepath = '../vocabs/bert-base-chinese-vocab.txt'
+vocab_filepath = 'vocabs/bert-base-chinese-vocab.txt'
 
-MAX_SEQ_LEN = 200
+# raw dataset
+init_train_table_txt_path = 'datasets/raw_datasets/init-train-table.txt'
+init_train_txt_path = 'datasets/raw_datasets/init-train.txt'
+
+# preprocessed
+multi_label_cls_train_save_path = 'datasets/preprocessed_datasets/multi_label_cls_train.json'
+multi_label_cls_valid_save_path = 'datasets/preprocessed_datasets/multi_label_cls_valid.json'
 
 
-class Example:
-    def __init__(self, text, sro_list):
+# tfrecord
+multi_label_cls_train_tfrecord_save_path = 'datasets/tfrecord_datasets/multi_label_cls_train.tfrecord'
+multi_label_cls_valid_tfrecord_save_path = 'datasets/tfrecord_datasets/multi_label_cls_valid.tfrecord'
+
+# tfrecord meta
+multi_label_cls_train_meta_save_path = 'datasets/tfrecord_datasets/multi_label_cls_train_meta.json'
+multi_label_cls_valid_meta_save_path = 'datasets/tfrecord_datasets/multi_label_cls_valid_meta.json'
+
+MAX_SEQ_LEN = 120
+
+
+class InitTrainExample:
+    def __init__(self, text, relations):
         self.text = text
-        self.sro_list = sro_list
+        self.relations = relations
 
 
-class Feature:
+class InitTrainFeature:
     def __init__(
-            self, inputs_ids, inputs_mask, segment_ids,
-            label_vector, label_ids, start_positions, end_positions
+            self,
+            inputs_ids,
+            inputs_mask,
+            segment_ids,
+            label_indices
     ):
         self.inputs_ids = inputs_ids
         self.inputs_mask = inputs_mask
         self.segment_ids = segment_ids
-        self.label_vector = label_vector
-        self.label_ids = label_ids
-        self.start_positions = start_positions
-        self.end_positions = end_positions
+        self.label_indices = label_indices
 
 
 class FeaturesWriter:
@@ -54,27 +68,22 @@ class FeaturesWriter:
         self.total_features = 0
 
     def process_feature(self, feature):
+        self.total_features += 1
+
         def create_int_feature(values):
-            feat = tf.train.Feature(int64_list=tf.train.Int64List(value=list(values)))
-            return feat
+            feature = tf.train.Feature(
+                int64_list=tf.train.Int64List(value=list(values))
+            )
+            return feature
 
         features = collections.OrderedDict()
         features['inputs_ids'] = create_int_feature(feature.inputs_ids)
         features['inputs_mask'] = create_int_feature(feature.inputs_mask)
         features['segment_ids'] = create_int_feature(feature.segment_ids)
-        features['label_ids'] = create_int_feature(feature.label_ids)
+        features['label_indices'] = create_int_feature(feature.label_indices)
 
         example = tf.train.Example(features=tf.train.Features(feature=features))
         self._writer.write(example.SerializeToString())
-
-        self.total_features += 1
-
-    def save_desc(self, save_filename, **kwargs):
-        kwargs['total_features'] = self.total_features
-        with tf.io.gfile.GFile(save_filename, mode='w') as writer:
-            j = json.dumps(kwargs, indent=2, ensure_ascii=False)
-            writer.write(j)
-        writer.close()
 
     def close(self):
         self._writer.close()
@@ -95,6 +104,9 @@ def load_init_train_txt(filepath=init_train_txt_path):
 
 
 def extract_relations_from_init_train_table():
+    """
+        用于获取所有的 relation
+    """
     init_train_table = load_init_train_table_txt()
     subjects, relations, objects, combined_str = [], [], [], []
     for item in init_train_table:
@@ -110,37 +122,76 @@ def extract_relations_from_init_train_table():
     relations_set = set(relations)
     combined_str_set = set(combined_str)
 
-    assert len(relations_set) == len(relations) == len(init_train_table)
-    assert len(combined_str_set) == len(relations)
+    assert len(relations_set) == len(relations) == len(init_train_table) == len(combined_str_set)
 
     return subjects, relations, objects, combined_str
 
 
 def extract_examples_from_init_train():
     init_train = load_init_train_txt()
-    examples = []
+    init_train_examples = []
     for item in init_train:
         item = json.loads(item)
         text = item['text'].strip()
         sro_list = item['sro_list']
-        relations = [sro['relation'] for sro in sro_list]
-        example = Example(text, relations)
-        examples.append(example)
+        relations = [
+            {
+                'relation': sro['relation'].strip(),
+                'subject': sro['subject'].strip(),
+                'object': sro['object'].strip()
+            } for sro in sro_list
+        ]
+        init_train_example = InitTrainExample(text, relations)
+        init_train_examples.append(init_train_example)
+    return init_train_examples
 
+
+def split_init_train_data(
+        split_valid_ratio=0.05
+):
+    split_valid_index = 1 / split_valid_ratio
+    init_train_examples = extract_examples_from_init_train()
+    multi_label_cls_train = []
+    multi_label_cls_valid = []
+    for index, example in enumerate(init_train_examples):
+        item = {
+            'text': example.text,
+            'relations': example.relations
+        }
+        if (index + 1) % split_valid_index == 0:
+            multi_label_cls_valid.append(item)
+        else:
+            multi_label_cls_train.append(item)
+
+    with tf.io.gfile.GFile(multi_label_cls_train_save_path, mode='w') as writer:
+        writer.write(json.dumps(multi_label_cls_train, ensure_ascii=False, indent=2))
+    writer.close()
+    with tf.io.gfile.GFile(multi_label_cls_valid_save_path, mode='w') as writer:
+        writer.write(json.dumps(multi_label_cls_valid, ensure_ascii=False, indent=2))
+    writer.close()
+
+
+def read_init_train_examples(filepath):
+    with tf.io.gfile.GFile(filepath, mode='r') as reader:
+        input_data = json.load(reader)
+
+    examples = []
+    for item in input_data:
+        text = item['text']
+        relations = item['relations']
+        example = InitTrainExample(text, relations)
+        examples.append(example)
     return examples
 
 
 def convert_examples_to_features(
         examples, vocab_file_path, labels,
-        max_seq_len, save_path, desc_save_path=None
+        max_seq_len, output_fn
 ):
     tokenizer = BertWordPieceTokenizer(vocab_file=vocab_file_path)
 
     # pad
-    tokenizer.enable_padding(
-        direction='right',
-        length=max_seq_len
-    )
+    tokenizer.enable_padding(length=max_seq_len)
 
     # trunc
     tokenizer.enable_truncation(max_seq_len)
@@ -148,39 +199,50 @@ def convert_examples_to_features(
     label_to_id_map = get_label_to_id_map(labels)
 
     num_labels = len(labels)
-    tfrecord_writer = FeaturesWriter(save_path)
     for example in examples:
         text = example.text
-        text_labels = example.relations
-        text_labels_ids = [label_to_id_map[label] for label in text_labels]
+        relations = example.relations
+        labels_ids = [label_to_id_map[relation['relation']] for relation in relations]
         tokenizer_outputs = tokenizer.encode(text)
-        feature = Feature(
+        label_indices = ids_to_vector(labels_ids, num_labels)
+        feature = InitTrainFeature(
             inputs_ids=tokenizer_outputs.ids,
             inputs_mask=tokenizer_outputs.attention_mask,
             segment_ids=tokenizer_outputs.type_ids,
-            label_ids=ids_to_vector(text_labels_ids, num_labels)
+            label_indices=label_indices
         )
-        tfrecord_writer.process_feature(feature)
-
-    if desc_save_path is not None:
-        kwargs = dict(
-            num_labels=num_labels,
-            max_seq_len=max_seq_len
-        )
-        tfrecord_writer.save_desc(desc_save_path, **kwargs)
+        output_fn(feature)
 
 
-def generate_tfrecord():
+def generate_tfrecord_from_json_file(
+        input_file_path,
+        vocab_file_path,
+        output_file_path,
+        max_seq_len=128
+):
     _, relations, _, _ = extract_relations_from_init_train_table()
-    examples = extract_examples_from_init_train()
+    examples = read_init_train_examples(input_file_path)
+
+    writer = FeaturesWriter(filename=output_file_path)
+
     convert_examples_to_features(
-        examples,
-        vocab_filepath,
-        relations,
-        MAX_SEQ_LEN,
-        tfrecord_save_path,
-        desc_json_save_path
+        examples=examples,
+        vocab_file_path=vocab_file_path,
+        labels=relations,
+        max_seq_len=max_seq_len,
+        output_fn=writer.process_feature
     )
+
+    meta_data = {
+        'task_type': 'multi_label_classification',
+        'data_size': writer.total_features,
+        'max_seq_len': max_seq_len,
+        'num_labels': len(relations)
+    }
+
+    writer.close()
+
+    return meta_data
 
 
 def inference(model, ret_path):
@@ -367,4 +429,17 @@ def log_inference_tfrecord_time(model, dataset, batch_size):
 
 
 if __name__ == '__main__':
-    calculate_tfrecord_prf(None, None)
+    train_meta_data = generate_tfrecord_from_json_file(
+        input_file_path=multi_label_cls_train_save_path,
+        vocab_file_path=vocab_filepath,
+        output_file_path=multi_label_cls_train_tfrecord_save_path,
+        max_seq_len=MAX_SEQ_LEN
+    )
+    valid_meta_data = generate_tfrecord_from_json_file(
+        input_file_path=multi_label_cls_valid_save_path,
+        vocab_file_path=vocab_filepath,
+        output_file_path=multi_label_cls_valid_tfrecord_save_path,
+        max_seq_len=MAX_SEQ_LEN
+    )
+    print(train_meta_data)
+    print(valid_meta_data)
