@@ -31,7 +31,7 @@ first_step_valid_save_path = 'datasets/preprocessed_datasets/first_step_valid.js
 
 # first step inference results
 first_step_inference_train_save_path = 'inference_results/mrc_results/in_use/first_step/train_results.json'
-first_step_inference_valid_save_path = 'inference_results/mrc_results/in_use/second_step/valid_results.json'
+first_step_inference_valid_save_path = 'inference_results/mrc_results/in_use/first_step/valid_results.json'
 
 # second step json file
 second_step_train_save_path = 'datasets/preprocessed_datasets/second_step_train.json'
@@ -284,6 +284,7 @@ def convert_inference_results_for_first_step(inference_results_path, convert_res
 
             qas_item = {
                 'question': relation_question_a,
+                'relation': relation['relation'],
                 'id': 'id_' + str(_id)
             }
             squad_json_item['qas'].append(qas_item)
@@ -299,14 +300,54 @@ def convert_inference_results_for_first_step(inference_results_path, convert_res
     writer.close()
 
 
-def convert_inference_results_for_second_step():
-    pass
+def convert_inference_results_for_second_step(inference_results_path, convert_results_save_path):
+    relation_questions_dict = extract_examples_from_relation_questions()
+    with tf.io.gfile.GFile(inference_results_path, mode='r') as reader:
+        input_data = json.load(reader)['data']
+    reader.close()
+
+    _id = 0
+    for i in range(len(input_data[0]['paragraphs'])):
+        item = input_data[0]['paragraphs'][i]
+        pred_relations = item['pred_relations']
+
+        qas = []
+
+        for relation in pred_relations:
+            _subject = relation['subject']
+            relation_question = relation_questions_dict[relation['relation']]
+            relation_question_a = relation_question.relation_question_b.replace('subject', _subject)
+
+            qas_item = {
+                'question': relation_question_a,
+                'relation': relation['relation'],
+                'subject': _subject,
+                'id': 'id_' + str(_id)
+            }
+            qas.append(qas_item)
+            _id += 1
+
+        input_data[0]['paragraphs'][i]['qas'] = qas
+
+        if (i + 1) % 1000 == 0:
+            print(i + 1)
+
+    input_data = {
+        'data': input_data
+    }
+    with tf.io.gfile.GFile(convert_results_save_path, mode='w') as writer:
+        writer.write(json.dumps(input_data, ensure_ascii=False, indent=2))
+    writer.close()
 
 
 def mrc_data_processor_main():
-    convert_inference_results_for_first_step(
-        inference_results_path=multi_label_cls_valid_results_path,
-        convert_results_save_path=first_step_valid_save_path
+    convert_inference_results_for_second_step(
+        inference_results_path=first_step_inference_train_save_path,
+        convert_results_save_path=second_step_train_save_path
+    )
+    convert_inference_results_for_second_step(
+        inference_results_path=first_step_inference_valid_save_path,
+        convert_results_save_path=second_step_valid_save_path
     )
 
 

@@ -364,6 +364,94 @@ class MRCTask:
 
         self.dump_to_files(all_predictions, all_nbest_json, only_text_predictions)
 
+    def predict_file(self, file_path, output_path):
+        with get_strategy_scope(self.distribution_strategy):
+            model = create_mrc_model(
+                max_seq_len=self.max_seq_len,
+                is_train=False, use_pretrain=False
+            )
+            checkpoint = tf.train.Checkpoint(model=model)
+            checkpoint.restore(
+                tf.train.latest_checkpoint(
+                    self.inference_model_dir
+                )
+            )
+            logging.info('Restore checkpoint from {}'.format(
+                tf.train.latest_checkpoint(self.inference_model_dir)
+            ))
+
+        tokenizer = tokenization.FullTokenizer(
+            vocab_file=self.vocab_file_path, do_lower_case=True
+        )
+
+        examples = read_squad_examples(
+            input_file=file_path,
+            is_training=False,
+            version_2_with_negative=False
+        )
+
+        writer = FeatureWriter(
+            filename=output_path,
+            is_training=False
+        )
+
+        features = []
+
+        def _append_feature(feature, is_padding):
+            if not is_padding:
+                features.append(feature)
+            writer.process_feature(feature)
+
+        convert_examples_to_features(
+            examples=examples,
+            tokenizer=tokenizer,
+            max_seq_length=self.max_seq_len,
+            doc_stride=self.doc_stride,
+            max_query_length=self.max_query_len,
+            is_training=False,
+            output_fn=_append_feature,
+            batch_size=self.predict_batch_size
+        )
+        writer.close()
+
+        dataset = read_and_batch_from_squad_tfrecord(
+            filename=output_path,
+            max_seq_len=self.max_seq_len,
+            is_training=False,
+            repeat=False,
+            batch_size=self.predict_batch_size
+        )
+
+        # predict
+        all_results = []
+        for data in dataset:
+            # (batch_size, 1)
+            unique_ids = data.pop('unique_ids')
+            # (batch_size, seq_len)
+            model_output = model.predict(map_data_to_mrc_predict_task(data))
+
+            start_logits = model_output['start_logits']
+            end_logits = model_output['end_logits']
+
+            for result in self.get_raw_results(dict(
+                    unique_ids=unique_ids,
+                    start_logits=start_logits,
+                    end_logits=end_logits
+            )):
+                all_results.append(result)
+
+        all_predictions, all_nbest_json, only_text_predictions = postprocess_output(
+            all_examples=valid_examples,
+            all_features=valid_features,
+            all_results=all_results,
+            n_best_size=self.n_best_size,
+            max_answer_length=self.max_answer_len,
+            do_lower_case=True,
+            verbose=False
+        )
+
+        self.dump_to_files(all_predictions, all_nbest_json, only_text_predictions)
+
     def get_raw_results(self, predictions):
         RawResult = collections.namedtuple(
             'RawResult',
@@ -475,6 +563,10 @@ def mrc_main():
     return task
 
 
-if __name__ == '__main__':
+def mrc_predict_main(file_path, output_path):
     task = mrc_main()
-    task.predict_output()
+    task.predict_file(file_path, output_path)
+
+
+if __name__ == '__main__':
+    pass
