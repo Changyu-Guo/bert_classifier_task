@@ -284,7 +284,8 @@ def postprocess_output(
         all_relations,
         all_features,
         all_results,
-        threshold
+        threshold,
+        results_save_path
 ):
     # 一个 feature 拥有一个 unique id
     # 定义一个根据 unique id 找到其结果的映射
@@ -310,6 +311,18 @@ def postprocess_output(
         all_origin_indices.append(origin_label_indices)
         all_pred_indices.append(pred_indices.numpy().tolist())
 
+        pred_relations = []
+        for index, has_relation in enumerate(pred_indices):
+            if has_relation == 1:
+                pred_relations.append(all_relations[index])
+
+        results_item = {
+            'text': origin_text,
+            'origin_relations': origin_relations,
+            'pred_relations': pred_relations
+        }
+        inference_results.append(results_item)
+
     precision, recall, f1, _ = precision_recall_fscore_support(
         all_origin_indices, all_pred_indices, average='macro'
     )
@@ -317,6 +330,10 @@ def postprocess_output(
     print('precision', precision)
     print('recall', recall)
     print('f1-score', f1)
+
+    with tf.io.gfile.GFile(results_save_path, mode='w') as writer:
+        writer.write(json.dumps(inference_results, ensure_ascii=False, indent=2))
+    writer.close()
 
 
 def inference(model, ret_path):

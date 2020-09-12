@@ -28,7 +28,7 @@ class CLSTask:
     def __init__(
             self,
             kwargs,
-            use_pretrain=False,
+            use_pretrain=True,
             use_prev_record=False,
             batch_size=None,
             inference_model_dir=None
@@ -196,7 +196,8 @@ class CLSTask:
                 optimizer=optimizer,
                 loss={
                     'probs': tf.keras.losses.BinaryCrossentropy(from_logits=False)
-                }
+                },
+                metrics=['binary_accuracy']
             )
 
         callbacks = self._create_callbacks()
@@ -309,10 +310,11 @@ class CLSTask:
             print(index)
 
         postprocess_output(
-            relations,
-            train_features,
-            train_results,
-            self.predict_threshold
+            all_relations=relations,
+            all_features=train_features,
+            all_results=train_results,
+            threshold=self.predict_threshold,
+            results_save_path=os.path.join(self.inference_results_save_dir, 'train_results.json')
         )
 
     def predict_valid_data(self):
@@ -372,10 +374,11 @@ class CLSTask:
                 valid_results.append(result)
 
         postprocess_output(
-            relations,
-            valid_features,
-            valid_results,
-            self.predict_threshold
+            all_relations=relations,
+            all_features=valid_features,
+            all_results=valid_results,
+            threshold=self.predict_threshold,
+            results_save_path=os.path.join(self.inference_results_save_dir, 'valid_results.json')
         )
 
     def generate_predict_item(self, unique_ids, batch_probs):
@@ -389,28 +392,6 @@ class CLSTask:
                 unique_id=unique_id.numpy(),
                 probs=probs
             )
-
-    def predict_with_tfrecord(self):
-
-        # restore model
-        with get_strategy_scope(self.distribution_strategy):
-            model = create_model(self.num_labels, is_train=False, use_pretrain=False)
-            checkpoint = tf.train.Checkpoint(model=model)
-            checkpoint.restore(tf.train.latest_checkpoint('../saved_models/classifier_epoch_30'))
-
-        dataset = read_and_batch_from_multi_label_cls_tfrecord(
-            filename=self.train_tfrecord_path,  # Notice ####
-            max_seq_len=self.max_seq_len,
-            num_labels=self.num_labels,
-            shuffle=False,
-            repeat=False,
-            batch_size=1  # Notice ####
-        )
-        for data in dataset:
-            label_indices = data.pop('label_indices')
-
-    def get_raw_results(self, predictions):
-        pass
 
 
 # Global Variables #####
@@ -445,7 +426,7 @@ PREDICT_BATCH_SIZE = 128
 PREDICT_THRESHOLD = 0.5
 
 # train relate
-LEARNING_RATE = 3e-5
+LEARNING_RATE = 1e-4
 
 # inference relate
 INFERENCE_RESULTS_SAVE_DIR = 'inference_results/multi_label_cls_results'
@@ -456,7 +437,7 @@ def get_model_params():
         lambda: None,
         task_name=TASK_NAME,
         distribution_strategy='one_device',
-        epochs=15,
+        epochs=20,
         predict_batch_size=PREDICT_BATCH_SIZE,
         model_save_dir=MODEL_SAVE_DIR,
         train_input_file_path=TRAIN_INPUT_FILE_PATH,
@@ -488,7 +469,7 @@ def multi_label_cls_main():
         use_pretrain=True,  # Notice ###
         use_prev_record=True,
         batch_size=80,  # Notice ###
-        inference_model_dir='saved_models/multi_label_cls_models/epochs_50'
+        inference_model_dir='saved_models/multi_label_cls_models/epochs_15'
     )
     return task
 

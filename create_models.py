@@ -27,7 +27,7 @@ def create_multi_label_cls_model(num_labels, is_train=True, use_pretrain=False):
         pooled_output = tf.keras.layers.Dropout(rate=0.1)(pooled_output)
 
     # (batch_size, num_labels)
-    probs = tf.keras.layers.Dense(num_labels, activation='sigmoid', name='pred_output')(pooled_output)
+    probs = tf.keras.layers.Dense(num_labels, activation='sigmoid')(pooled_output)
 
     model = tf.keras.Model(
         inputs={
