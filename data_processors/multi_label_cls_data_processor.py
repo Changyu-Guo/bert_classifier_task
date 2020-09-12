@@ -306,7 +306,7 @@ def postprocess_output(
         pred_probs = feature_result.probs
 
         # return a Tensor
-        pred_indices = tf.where(pred_probs >= threshold, 1, 0)
+        pred_indices = tf.where(pred_probs > threshold, 1, 0)
 
         all_origin_indices.append(origin_label_indices)
         all_pred_indices.append(pred_indices.numpy().tolist())
@@ -314,7 +314,11 @@ def postprocess_output(
         pred_relations = []
         for index, has_relation in enumerate(pred_indices):
             if has_relation == 1:
-                pred_relations.append(all_relations[index])
+                pred_relations.append(
+                    {
+                        'relation': all_relations[index]
+                    }
+                )
 
         results_item = {
             'text': origin_text,
@@ -336,166 +340,6 @@ def postprocess_output(
     writer.close()
 
 
-def inference(model, ret_path):
-    _, relations, _, _ = extract_relations_from_init_train_table()
-    id_to_relation_map = relations
-
-    tokenizer = BertWordPieceTokenizer('../vocabs/bert-base-chinese-vocab.txt')
-
-    tokenizer.enable_padding(length=200)
-    tokenizer.enable_truncation(max_length=200)
-
-    checkpoint = tf.train.Checkpoint(model=model)
-
-    checkpoint.restore(tf.train.latest_checkpoint('../saved_models'))
-
-    examples = extract_examples_from_init_train()
-
-    writer = tf.io.gfile.GFile(ret_path, mode='w')
-
-    for index, example in enumerate(examples):
-        text = example.text
-        relations = example.relations
-
-        tokenizer_outputs = tokenizer.encode(text)
-        inputs_ids = tokenizer_outputs.ids
-        inputs_mask = tokenizer_outputs.attention_mask
-        segment_ids = tokenizer_outputs.type_ids
-
-        inputs_ids = tf.constant(inputs_ids, dtype=tf.int64)
-        inputs_mask = tf.constant(inputs_mask, dtype=tf.int64)
-        segment_ids = tf.constant(segment_ids, dtype=tf.int64)
-
-        inputs_ids = tf.reshape(inputs_ids, (1, -1))
-        inputs_mask = tf.reshape(inputs_mask, (1, -1))
-        segment_ids = tf.reshape(segment_ids, (1, -1))
-
-        pred = model.predict(((inputs_ids, inputs_mask, segment_ids),))
-
-        pred = tf.where(pred > 0.5).numpy()
-
-        pred_relations = []
-        for p in pred:
-            pred_relations.append(id_to_relation_map[p[1]])
-
-        j = {
-            "text": text,
-            "origin_relations": relations,
-            "pred_relations": pred_relations
-        }
-
-        writer.write(json.dumps(j, ensure_ascii=False) + '\n')
-
-        if (index + 1) % 500 == 0:
-            print(index + 1)
-
-
-def inference_tfrecord(model, ret_path, dataset):
-    _, relations, _, _ = extract_relations_from_init_train_table()
-    id_to_relation_map = relations
-
-    tokenizer = BertWordPieceTokenizer(vocab_file='../vocabs/bert-base-chinese-vocab.txt')
-    writer = tf.io.gfile.GFile(ret_path, mode='w')
-
-    index = 0
-    y_true, y_pred = [], []
-    all_sentences = []
-    for data in dataset:
-
-        inputs_ids = data[0][0]
-        labels_ids = data[1]
-
-        sentences = [
-            tokenizer.decode(input_ids).replace(' ', '')
-            for input_ids in inputs_ids
-        ]
-        all_sentences.extend(sentences)
-
-        pred = model.predict(data)
-        pred = tf.where(pred > 0.01, 1, 0)
-
-        y_true.append(tf.reshape(label_ids, (-1,)).numpy())
-        y_pred.append(tf.reshape(pred, (-1,)).numpy())
-
-        label_ids = tf.where(data[1] == 1)
-        labels = [id_to_relation_map[label_id[1]] for label_id in label_ids]
-        pred = tf.where(pred == 1)
-
-        pred_relations = []
-        for p in pred:
-            pred_relations.append(id_to_relation_map[p[1]])
-
-        j = {
-            "text": text,
-            "origin_relations": labels,
-            "pred_relations": pred_relations
-        }
-
-        writer.write(json.dumps(j, ensure_ascii=False) + '\n')
-
-        index += 1
-        if index % 100 == 0:
-            print(index)
-
-
-def calculate_tfrecord_prf(model, dataset):
-    thresholds = np.arange(0.5, 0, -0.01)
-    precisions = []
-    recalls = []
-    f1_scores = []
-    for threshold in thresholds:
-        y_true, y_pred = [], []
-        for data in dataset:
-            labels_ids = data[1]
-            y_true.extend(labels_ids.numpy())
-
-            pred = model.predict(data)
-            pred = tf.where(pred > threshold, 1, 0)
-            y_pred.extend(pred.numpy())
-
-        precision, recall, f1_score, _ = precision_recall_fscore_support(
-            y_true, y_pred, average='macro'
-        )
-        precisions.append(precision)
-        recalls.append(recall)
-        f1_scores.append(f1_score)
-
-        print(threshold)
-
-    print(precisions)
-    print(recalls)
-    print(f1_scores)
-
-    plt.plot(thresholds, precisions, 'r^-', label='Precision')
-    plt.plot(thresholds, recalls, 'go-', label='Recall')
-    plt.plot(thresholds, f1_scores, 'b+-', label='F1-Score')
-
-    for threshold, precision in zip(thresholds, precisions):
-        plt.text(threshold, precision + 0.01, '%.3f' % precision, ha='center', va='bottom', fontsize=6)
-    for threshold, recall in zip(thresholds, recalls):
-        plt.text(threshold, recall, '%.3f' % recall, ha='center', va='bottom', fontsize=6)
-    for threshold, f1_score in zip(thresholds, f1_scores):
-        plt.text(threshold, f1_score - 0.01, '%.3f' % f1_score, ha='center', va='bottom', fontsize=6)
-
-    plt.xlabel('thresholds')
-    plt.ylabel('precision - recall - f1-score')
-
-    plt.xlim(thresholds[0] - 0.05, thresholds[-1] + 0.05)
-    plt.ylim(0.8, 0.95)
-
-    plt.legend()
-
-    plt.show()
-
-
-def process_output(
-        all_examples,
-        all_features,
-        all_results
-):
-    pass
-
-
 if __name__ == '__main__':
     train_meta_data = generate_tfrecord_from_json_file(
         input_file_path=multi_label_cls_train_save_path,
@@ -509,5 +353,3 @@ if __name__ == '__main__':
         output_file_path=multi_label_cls_valid_tfrecord_save_path,
         max_seq_len=MAX_SEQ_LEN
     )
-    print(train_meta_data)
-    print(valid_meta_data)

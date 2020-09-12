@@ -421,7 +421,7 @@ TENSORBOARD_LOG_DIR = 'logs/multi-label-cls-logs'
 VOCAB_FILE_PATH = 'vocabs/bert-base-chinese-vocab.txt'
 
 # dataset process relate
-MAX_SEQ_LEN = 120
+MAX_SEQ_LEN = 200
 PREDICT_BATCH_SIZE = 128
 PREDICT_THRESHOLD = 0.5
 
@@ -437,7 +437,7 @@ def get_model_params():
         lambda: None,
         task_name=TASK_NAME,
         distribution_strategy='one_device',
-        epochs=20,
+        epochs=15,
         predict_batch_size=PREDICT_BATCH_SIZE,
         model_save_dir=MODEL_SAVE_DIR,
         train_input_file_path=TRAIN_INPUT_FILE_PATH,
@@ -468,7 +468,7 @@ def multi_label_cls_main():
         get_model_params(),
         use_pretrain=True,  # Notice ###
         use_prev_record=True,
-        batch_size=80,  # Notice ###
+        batch_size=36,  # Notice ###
         inference_model_dir='saved_models/multi_label_cls_models/epochs_15'
     )
     return task

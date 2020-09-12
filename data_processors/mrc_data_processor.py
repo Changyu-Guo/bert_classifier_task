@@ -10,20 +10,36 @@ import collections
 import tensorflow as tf
 from data_processors.multi_label_cls_data_processor import load_init_train_txt
 from data_processors.multi_label_cls_data_processor import extract_relations_from_init_train_table
-from utils import get_label_to_id_map
+from utils.data_utils import get_label_to_id_map
 
-vocab_filepath = '../vocabs/bert-base-chinese-vocab.txt'
+vocab_filepath = 'vocabs/bert-base-chinese-vocab.txt'
 
 # all relation questions
-relation_questions_txt_path = '../datasets/raw_datasets/relation_questions.txt'
+relation_questions_txt_path = 'datasets/raw_datasets/relation_questions.txt'
 
 # mrc task
-mrc_train_save_path = '../datasets/preprocessed_datasets/mrc_train.json'
-mrc_valid_save_path = '../datasets/preprocessed_datasets/mrc_valid.json'
+mrc_train_save_path = 'datasets/preprocessed_datasets/mrc_train.json'
+mrc_valid_save_path = 'datasets/preprocessed_datasets/mrc_valid.json'
 
-# classification task
-cls_train_save_path = '../datasets/preprocessed_datasets/cls_train.json'
-cls_valid_save_path = '../datasets/preprocessed_datasets/cls_valid.json'
+# multi label cls step inference result
+multi_label_cls_train_results_path = 'inference_results/multi_label_cls_results/in_use/train_results.json'
+multi_label_cls_valid_results_path = 'inference_results/multi_label_cls_results/in_use/valid_results.json'
+
+# first step json file
+first_step_train_save_path = 'datasets/preprocessed_datasets/first_step_train.json'
+first_step_valid_save_path = 'datasets/preprocessed_datasets/first_step_valid.json'
+
+# first step inference results
+first_step_inference_train_save_path = 'inference_results/mrc_results/in_use/first_step/train_results.json'
+first_step_inference_valid_save_path = 'inference_results/mrc_results/in_use/second_step/valid_results.json'
+
+# second step json file
+second_step_train_save_path = 'datasets/preprocessed_datasets/second_step_train.json'
+second_step_valid_save_path = 'datasets/preprocessed_datasets/second_step_valid.json'
+
+# second step inference results
+second_step_inference_train_save_path = 'inference_results/mrc_results/in_use/second_step/train_results.json'
+second_step_inference_valid_save_path = 'inference_results/mrc_results/in_use/second_step/valid_results.json'
 
 
 class InitTrainExample:
@@ -142,10 +158,6 @@ def convert_example_to_squad_json_format(mrc_train_path, mrc_valid_path, cls_tra
     init_train_examples = extract_examples_from_init_train()
     relation_questions_dict = extract_examples_from_relation_questions()
 
-    # data for classification
-    train_cls_examples = []
-    valid_cls_examples = []
-
     # data for mrc
     train_squad_json = {
         'data': [
@@ -174,7 +186,6 @@ def convert_example_to_squad_json_format(mrc_train_path, mrc_valid_path, cls_tra
             'context': text,
             'qas': []
         }
-        cls_items = []
         for relation in relations:
 
             # sro item
@@ -190,16 +201,6 @@ def convert_example_to_squad_json_format(mrc_train_path, mrc_valid_path, cls_tra
             relation_question = relation_questions_dict[_relation]
             relation_question_a = relation_question.relation_question_a
             relation_question_b = relation_question.relation_question_b.replace('subject', _subject)
-            relation_question_c = relation_question.relation_question_c.replace(
-                'subject', _subject
-            ).replace(
-                'object', _object
-            )
-            error_relation_question_c = relation_question.relation_question_c.replace(
-                'subject', _object
-            ).replace(
-                'object', _subject
-            )
 
             # to squad json format
             # question 1, for mrc
@@ -230,26 +231,12 @@ def convert_example_to_squad_json_format(mrc_train_path, mrc_valid_path, cls_tra
             squad_json_item['qas'].append(qas_item)
             _id += 1
 
-            # question 3, for classification
-            cls_items.append({
-                'text': text,
-                'question': relation_question_c,
-                'is_valid': True
-            })
-            cls_items.append({
-                'text': text,
-                'question': error_relation_question_c,
-                'is_valid': False
-            })
-
         # 当前 item 被分到验证集
         if (item_index + 1) % 10 == 0:
             valid_squad_json['data'][0]['paragraphs'].append(squad_json_item)
-            valid_cls_examples.extend(cls_items)
         else:
             # 当前 item 被分到训练集
             train_squad_json['data'][0]['paragraphs'].append(squad_json_item)
-            train_cls_examples.extend(cls_items)
 
         if (item_index + 1) % 1000 == 0:
             print(item_index + 1)
@@ -262,19 +249,66 @@ def convert_example_to_squad_json_format(mrc_train_path, mrc_valid_path, cls_tra
         writer.write(json.dumps(valid_squad_json, ensure_ascii=False, indent=2))
     writer.close()
 
-    # 将 cls 数据写入 json 文件
-    with tf.io.gfile.GFile(cls_train_path, 'w') as writer:
-        writer.write(json.dumps(train_cls_examples, ensure_ascii=False, indent=2))
+
+def convert_inference_results_for_first_step(inference_results_path, convert_results_save_path):
+    relation_questions_dict = extract_examples_from_relation_questions()
+    with tf.io.gfile.GFile(inference_results_path, mode='r') as reader:
+        inference_results = json.load(reader)
+    reader.close()
+
+    squad_json = {
+        'data': [
+            {
+                'title': 'first step data',
+                'paragraphs': []
+            }
+        ]
+    }
+
+    _id = 0
+    for item_index, item in enumerate(inference_results):
+        text = item['text']
+        origin_relations = item['origin_relations']
+        pred_relations = item['pred_relations']
+
+        squad_json_item = {
+            'context': text,
+            'qas': [],
+            'origin_relations': origin_relations,
+            'pred_relations': pred_relations
+        }
+
+        for relation in pred_relations:
+            relation_question = relation_questions_dict[relation['relation']]
+            relation_question_a = relation_question.relation_question_a
+
+            qas_item = {
+                'question': relation_question_a,
+                'id': 'id_' + str(_id)
+            }
+            squad_json_item['qas'].append(qas_item)
+            _id += 1
+
+        squad_json['data'][0]['paragraphs'].append(squad_json_item)
+
+        if (item_index + 1) % 1000 == 0:
+            print(item_index + 1)
+
+    with tf.io.gfile.GFile(convert_results_save_path, mode='w') as writer:
+        writer.write(json.dumps(squad_json, ensure_ascii=False, indent=2))
     writer.close()
-    with tf.io.gfile.GFile(cls_valid_path, 'w') as writer:
-        writer.write(json.dumps(valid_cls_examples, ensure_ascii=False, indent=2))
-    writer.close()
+
+
+def convert_inference_results_for_second_step():
+    pass
+
+
+def mrc_data_processor_main():
+    convert_inference_results_for_first_step(
+        inference_results_path=multi_label_cls_valid_results_path,
+        convert_results_save_path=first_step_valid_save_path
+    )
 
 
 if __name__ == '__main__':
-    convert_example_to_squad_json_format(
-        mrc_train_save_path,
-        mrc_valid_save_path,
-        cls_train_save_path,
-        cls_valid_save_path
-    )
+    pass
