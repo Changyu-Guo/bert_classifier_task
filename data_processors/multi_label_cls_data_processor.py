@@ -48,15 +48,23 @@ class InitTrainExample:
 class InitTrainFeature:
     def __init__(
             self,
+            unique_id,
+            example_index,
             inputs_ids,
             inputs_mask,
             segment_ids,
-            label_indices
+            label_indices,
+            origin_text,
+            origin_relations  # 用于推断任务
     ):
+        self.unique_id = unique_id
+        self.example_index = example_index
         self.inputs_ids = inputs_ids
         self.inputs_mask = inputs_mask
         self.segment_ids = segment_ids
         self.label_indices = label_indices
+        self.origin_text = origin_text
+        self.origin_relations = origin_relations
 
 
 class FeaturesWriter:
@@ -77,6 +85,8 @@ class FeaturesWriter:
             return feature
 
         features = collections.OrderedDict()
+        # 写入 unique_ids，用于推断任务中
+        features['unique_ids'] = create_int_feature([feature.unique_id])
         features['inputs_ids'] = create_int_feature(feature.inputs_ids)
         features['inputs_mask'] = create_int_feature(feature.inputs_mask)
         features['segment_ids'] = create_int_feature(feature.segment_ids)
@@ -128,6 +138,9 @@ def extract_relations_from_init_train_table():
 
 
 def extract_examples_from_init_train():
+    """
+        Extract Init Train Example
+    """
     init_train = load_init_train_txt()
     init_train_examples = []
     for item in init_train:
@@ -149,6 +162,10 @@ def extract_examples_from_init_train():
 def split_init_train_data(
         split_valid_ratio=0.05
 ):
+    """
+        从 Example 的层面切分数据集
+        切分后的数据集保存的是 Example
+    """
     split_valid_index = 1 / split_valid_ratio
     init_train_examples = extract_examples_from_init_train()
     multi_label_cls_train = []
@@ -172,6 +189,9 @@ def split_init_train_data(
 
 
 def read_init_train_examples(filepath):
+    """
+        读取序列化的 Example
+    """
     with tf.io.gfile.GFile(filepath, mode='r') as reader:
         input_data = json.load(reader)
 
@@ -199,19 +219,34 @@ def convert_examples_to_features(
     label_to_id_map = get_label_to_id_map(labels)
 
     num_labels = len(labels)
-    for example in examples:
+
+    base_id = 1000000000
+    unique_id = base_id
+
+    for example_index, example in enumerate(examples):
         text = example.text
         relations = example.relations
+
+        # label 转为 id
         labels_ids = [label_to_id_map[relation['relation']] for relation in relations]
-        tokenizer_outputs = tokenizer.encode(text)
+        # id 转为 indices
         label_indices = ids_to_vector(labels_ids, num_labels)
+
+        tokenizer_outputs = tokenizer.encode(text)
+
+        # 构造 feature
         feature = InitTrainFeature(
+            unique_id=unique_id,
+            example_index=example_index,
             inputs_ids=tokenizer_outputs.ids,
             inputs_mask=tokenizer_outputs.attention_mask,
             segment_ids=tokenizer_outputs.type_ids,
-            label_indices=label_indices
+            label_indices=label_indices,
+            origin_text=text,
+            origin_relations=relations
         )
         output_fn(feature)
+        unique_id += 1
 
 
 def generate_tfrecord_from_json_file(
@@ -397,35 +432,12 @@ def calculate_tfrecord_prf(model, dataset):
     plt.show()
 
 
-def log_inference_tfrecord_time(model, dataset, batch_size):
-    _, relations, _, _ = extract_relations_from_init_train_table()
-    id_to_relation_map = relations
-
-    dataset = dataset.take(4000)
-
-    total_batch = 0
-
-    start = time.time()
-    pred_relations = []
-    for data in dataset:
-        total_batch += 1
-
-        # (batch_size, num_labels)
-        pred = model.predict(data)
-
-        # convert 0 ~ 1 point to 0 and 1
-        pred = tf.where(pred > 0.5, 1, 0)
-
-        # get true label
-        pred = tf.where(pred == 1)
-
-    end = time.time()
-    print(
-        'batch_size: {}, total_batch: {}, total_time: {:.4} s, time_per_batch: {:.4} s, time_per_example: {:.4} '
-        's'.format(
-            batch_size, total_batch, end - start, (end - start) / total_batch,
-            (end - start) / (batch_size * total_batch))
-    )
+def process_output(
+        all_examples,
+        all_features,
+        all_results
+):
+    pass
 
 
 if __name__ == '__main__':
