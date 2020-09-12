@@ -280,6 +280,45 @@ def generate_tfrecord_from_json_file(
     return meta_data
 
 
+def postprocess_output(
+        all_relations,
+        all_features,
+        all_results,
+        threshold
+):
+    # 一个 feature 拥有一个 unique id
+    # 定义一个根据 unique id 找到其结果的映射
+    unique_id_to_result = {}
+    for result in all_results:
+        unique_id_to_result[result.unique_id] = result
+
+    inference_results = []
+    all_origin_indices = []
+    all_pred_indices = []
+    for feature in all_features:
+        unique_id = feature.unique_id
+        origin_label_indices = feature.label_indices
+        origin_relations = feature.origin_relations
+        origin_text = feature.origin_text
+
+        feature_result = unique_id_to_result[unique_id]
+        pred_probs = feature_result.probs
+
+        # return a Tensor
+        pred_indices = tf.where(pred_probs >= threshold, 1, 0)
+
+        all_origin_indices.append(origin_label_indices)
+        all_pred_indices.append(pred_indices.numpy().tolist())
+
+    precision, recall, f1, _ = precision_recall_fscore_support(
+        all_origin_indices, all_pred_indices, average='macro'
+    )
+
+    print('precision', precision)
+    print('recall', recall)
+    print('f1-score', f1)
+
+
 def inference(model, ret_path):
     _, relations, _, _ = extract_relations_from_init_train_table()
     id_to_relation_map = relations

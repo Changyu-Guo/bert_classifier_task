@@ -17,6 +17,7 @@ from data_processors.multi_label_cls_data_processor import FeaturesWriter
 from data_processors.multi_label_cls_data_processor import read_init_train_examples
 from data_processors.multi_label_cls_data_processor import generate_tfrecord_from_json_file
 from data_processors.multi_label_cls_data_processor import convert_examples_to_features
+from data_processors.multi_label_cls_data_processor import postprocess_output
 from data_processors.inputs_pipeline import read_and_batch_from_multi_label_cls_tfrecord
 from data_processors.inputs_pipeline import map_data_to_multi_label_cls_train_task
 from data_processors.inputs_pipeline import map_data_to_multi_label_cls_predict_task
@@ -266,9 +267,6 @@ class CLSTask:
                     self.inference_model_dir
                 )
             )
-            logging.info('Restore checkpoint from {}'.format(
-                tf.train.latest_checkpoint(self.inference_model_dir)
-            ))
         train_examples = read_init_train_examples(self.train_input_file_path)
 
         train_writer = FeaturesWriter(
@@ -298,26 +296,99 @@ class CLSTask:
             repeat=False,
             batch_size=self.predict_batch_size
         )
-        all_results = []
-        for data in train_dataset:
+        train_results = []
+        for index, data in enumerate(train_dataset):
             unique_ids = data.pop('unique_ids')
             model_output = model.predict(
                 map_data_to_multi_label_cls_predict_task(data)
             )
             batch_probs = model_output['probs']
-            for result in self.generate_predict_item({
-                'unique_ids': unique_ids,
-                'batch_probs': batch_probs
-            }):
-                all_results.append(result)
+            for result in self.generate_predict_item(unique_ids, batch_probs):
+                train_results.append(result)
 
-            break
+            print(index)
+
+        postprocess_output(
+            relations,
+            train_features,
+            train_results,
+            self.predict_threshold
+        )
 
     def predict_valid_data(self):
-        pass
+        _, relations, _, _ = extract_relations_from_init_train_table()
+        num_labels = len(relations)
 
-    def generate_predict_item(self, predictions):
-        print(predictions)
+        with get_strategy_scope(self.distribution_strategy):
+            model = create_multi_label_cls_model(
+                num_labels,
+                is_train=False,
+                use_pretrain=False
+            )
+            checkpoint = tf.train.Checkpoint(model=model)
+            checkpoint.restore(
+                tf.train.latest_checkpoint(
+                    self.inference_model_dir
+                )
+            )
+
+        valid_examples = read_init_train_examples(self.valid_input_file_path)
+
+        valid_writer = FeaturesWriter(
+            filename=self.predict_valid_output_file_path
+        )
+
+        valid_features = []
+
+        def _append_feature(feature):
+            valid_features.append(feature)
+            valid_writer.process_feature(feature)
+
+        convert_examples_to_features(
+            examples=valid_examples,
+            vocab_file_path=self.vocab_file_path,
+            labels=relations,
+            max_seq_len=self.max_seq_len,
+            output_fn=_append_feature
+        )
+        valid_writer.close()
+
+        valid_dataset = read_and_batch_from_multi_label_cls_tfrecord(
+            filename=self.predict_valid_output_file_path,
+            max_seq_len=self.max_seq_len,
+            num_labels=num_labels,
+            shuffle=False,
+            repeat=False,
+            batch_size=self.predict_batch_size
+        )
+        valid_results = []
+        for data in valid_dataset:
+            unique_ids = data.pop('unique_ids')
+            model_output = model.predict(
+                map_data_to_multi_label_cls_predict_task(data)
+            )
+            batch_probs = model_output['probs']
+            for result in self.generate_predict_item(unique_ids, batch_probs):
+                valid_results.append(result)
+
+        postprocess_output(
+            relations,
+            valid_features,
+            valid_results,
+            self.predict_threshold
+        )
+
+    def generate_predict_item(self, unique_ids, batch_probs):
+        RawResult = collections.namedtuple(
+            'RawResult',
+            ['unique_id', 'probs']
+        )
+
+        for unique_id, probs in zip(unique_ids, batch_probs):
+            yield RawResult(
+                unique_id=unique_id.numpy(),
+                probs=probs
+            )
 
     def predict_with_tfrecord(self):
 
@@ -385,7 +456,7 @@ def get_model_params():
         lambda: None,
         task_name=TASK_NAME,
         distribution_strategy='one_device',
-        epochs=50,
+        epochs=15,
         predict_batch_size=PREDICT_BATCH_SIZE,
         model_save_dir=MODEL_SAVE_DIR,
         train_input_file_path=TRAIN_INPUT_FILE_PATH,
@@ -414,8 +485,8 @@ def multi_label_cls_main():
     logging.set_verbosity(logging.INFO)
     task = CLSTask(
         get_model_params(),
-        use_pretrain=False,  # Notice ###
-        use_prev_record=False,
+        use_pretrain=True,  # Notice ###
+        use_prev_record=True,
         batch_size=80,  # Notice ###
         inference_model_dir='saved_models/multi_label_cls_models/epochs_50'
     )

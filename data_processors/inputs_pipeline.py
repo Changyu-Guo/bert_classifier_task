@@ -9,6 +9,7 @@ def read_and_batch_from_multi_label_cls_tfrecord(
         shuffle=True, repeat=False, batch_size=None
 ):
     name_to_features = {
+        'unique_ids': tf.io.FixedLenFeature([], tf.int64),
         'inputs_ids': tf.io.FixedLenFeature([max_seq_len], tf.int64),
         'inputs_mask': tf.io.FixedLenFeature([max_seq_len], tf.int64),
         'segment_ids': tf.io.FixedLenFeature([max_seq_len], tf.int64),
