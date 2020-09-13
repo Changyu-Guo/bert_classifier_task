@@ -286,7 +286,7 @@ MAX_SEQ_LEN = 165
 PREDICT_BATCH_SIZE = 128
 
 # train relate
-LEARNING_RATE = 3e-5
+LEARNING_RATE = 1e-5
 
 # inference relate
 INFERENCE_RESULTS_SAVE_DIR = 'inference_results/mrc_results'
@@ -297,7 +297,7 @@ def get_model_params():
         lambda: None,
         task_name=TASK_NAME,
         distribution_strategy='one_device',
-        epochs=15,
+        epochs=5,
         predict_batch_size=PREDICT_BATCH_SIZE,
         model_save_dir=MODEL_SAVE_DIR,
         train_input_file_path=BI_CLS_TRAIN_INPUT_FILE_PATH,
