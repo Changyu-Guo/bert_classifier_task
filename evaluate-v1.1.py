@@ -56,6 +56,7 @@ def evaluate(dataset, predictions):
     for article in dataset:
         for paragraph in article['paragraphs']:
             for qa in paragraph['qas']:
+                # 数据总数量
                 total += 1
                 if qa['id'] not in predictions:
                     message = 'Unanswered question ' + qa['id'] + \
@@ -77,7 +78,7 @@ def evaluate(dataset, predictions):
 
 if __name__ == '__main__':
     dataset_file = 'datasets/preprocessed_datasets/mrc_valid.json'
-    prediction_file = 'inference_results/mrc_results/only_text_predictions.json'
+    prediction_file = 'inference_results/mrc_results/bert-base-chinese-epochs-3/only_text_predictions.json'
     with open(dataset_file, encoding='utf-8') as dataset_file:
         dataset_json = json.load(dataset_file)
         dataset = dataset_json['data']

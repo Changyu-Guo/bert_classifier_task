@@ -6,9 +6,6 @@ import tensorflow as tf
 from tokenizers import BertWordPieceTokenizer
 from data_processors.mrc_data_processor import extract_examples_from_relation_questions
 
-inference_train_path = '../inference_results/mrc_results/in_use/second_step/train_results.json'
-inference_valid_path = '../inference_results/mrc_results/in_use/second_step/valid_results.json'
-
 
 class BiCLSExample:
     def __init__(self, text, question, is_valid):
@@ -20,6 +17,8 @@ class BiCLSExample:
 class BiCLSFeature:
     def __init__(
             self,
+            unique_id,
+            example_index,
             inputs_ids,
             inputs_mask,
             segment_ids,
@@ -49,6 +48,7 @@ class FeatureWriter:
             return feature
 
         features = collections.OrderedDict()
+        features['unique_ids'] = create_int_feature([feature.unique_id])
         features['inputs_ids'] = create_int_feature(feature.inputs_ids)
         features['inputs_mask'] = create_int_feature(feature.inputs_mask)
         features['segment_ids'] = create_int_feature(feature.segment_ids)
@@ -161,19 +161,6 @@ def generate_tfrecord_from_json_file(
     writer.close()
 
     return meta_data
-
-
-def binary_cls_data_processor_main():
-    vocab_file_path = 'vocabs/bert-base-chinese-vocab.txt'
-    examples = read_examples_from_mrc_inference_results(
-        'inference_results/mrc_results/in_use/second_step/valid_results.json'
-    )
-    convert_examples_to_features(
-        examples,
-        vocab_file_path=vocab_file_path,
-        max_seq_len=165,
-        output_fn=None
-    )
 
 
 if __name__ == '__main__':

@@ -16,6 +16,8 @@ from utils.distribu_utils import get_strategy_scope
 from create_models import create_binary_cls_model
 from data_processors.binary_cls_data_processor import read_examples_from_mrc_inference_results
 from data_processors.binary_cls_data_processor import generate_tfrecord_from_json_file
+from data_processors.binary_cls_data_processor import FeatureWriter
+from data_processors.binary_cls_data_processor import convert_examples_to_features
 from data_processors.inputs_pipeline import read_and_batch_from_bi_cls_record
 from data_processors.inputs_pipeline import map_data_to_bi_cls_train_task
 
@@ -210,7 +212,7 @@ class MRCTask:
             callbacks=callbacks,
             verbose=1,
             validation_data=valid_dataset
-        )
+        ) 
 
         # 保存最后一个 epoch 的模型
         checkpoint.save(self.model_save_dir)
@@ -254,6 +256,22 @@ class MRCTask:
 
         return callbacks
 
+    def predict_file(self, file_path, output_path):
+        with get_strategy_scope(self.distribution_strategy):
+            model = create_binary_cls_model(
+                is_train=False,
+                use_pretrain=False
+            )
+            checkpoint = tf.train.Checkpoint(model=model)
+            checkpoint.restore(
+                tf.train.latest_checkpoint(
+                    self.inference_model_dir
+                )
+            )
+            logging.info('Restore checkpoint from {}'.format(
+                tf.train.latest_checkpoint(self.inference_model_dir)
+            ))
+
 
 # Global Variables ############
 
@@ -267,12 +285,10 @@ BI_CLS_VALID_INPUT_FILE_PATH = 'inference_results/mrc_results/in_use/second_step
 # tfrecord
 TRAIN_OUTPUT_FILE_PATH = 'datasets/tfrecord_datasets/bi_cls_train.tfrecord'
 VALID_OUTPUT_FILE_PATH = 'datasets/tfrecord_datasets/bi_cls_valid.tfrecord'
-PREDICT_VALID_OUTPUT_FILE_PATH = 'datasets/tfrecord_datasets/bi_cls_predict_valid.tfrecord'
 
 # tfrecord meta data
 TRAIN_OUTPUT_META_PATH = 'datasets/tfrecord_datasets/bi_cls_train_meta.json'
 VALID_OUTPUT_META_PATH = 'datasets/tfrecord_datasets/bi_cls_valid_meta.json'
-PREDICT_VALID_OUTPUT_META_PATH = 'datasets/tfrecord_datasets/bi_cls_predict_valid_meta.json'
 
 # save relate
 MODEL_SAVE_DIR = 'saved_models/binary_cls_models'
