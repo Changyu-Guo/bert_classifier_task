@@ -3,7 +3,6 @@
 from data_processors.mrc_data_processor import mrc_data_processor_main
 from mrc_task import mrc_predict_main
 from mrc_task import mrc_main
-from data_processors.binary_cls_data_processor import binary_cls_data_processor_main
 
 vocab_filepath = 'vocabs/bert-base-chinese-vocab.txt'
 
@@ -35,6 +34,8 @@ second_step_inference_train_save_path = 'inference_results/mrc_results/in_use/se
 second_step_inference_valid_save_path = 'inference_results/mrc_results/in_use/second_step/valid_results.json'
 
 if __name__ == '__main__':
-    binary_cls_data_processor_main()
+    # binary_cls_data_processor_main()
     # mrc_data_processor_main()
     # mrc_predict_main(first_step_valid_save_path, first_step_inference_valid_save_path)
+    pass
+

@@ -8,18 +8,17 @@
 import json
 import collections
 import tensorflow as tf
-from data_processors.multi_label_cls_data_processor import load_init_train_txt
-from data_processors.multi_label_cls_data_processor import extract_relations_from_init_train_table
-from utils.data_utils import get_label_to_id_map
-
-vocab_filepath = 'vocabs/bert-base-chinese-vocab.txt'
-
-# all relation questions
-relation_questions_txt_path = 'datasets/raw_datasets/relation_questions.txt'
+import tokenization
+from data_processors.commom import read_init_train_train_examples
+from data_processors.commom import read_init_train_valid_examples
+from data_processors.commom import get_squad_json_template
+from data_processors.commom import get_squad_json_paragraph_template
+from data_processors.commom import get_squad_json_qas_item_template
+from data_processors.commom import extract_examples_dict_from_relation_questions
 
 # mrc task
-mrc_train_save_path = 'datasets/preprocessed_datasets/mrc_train.json'
-mrc_valid_save_path = 'datasets/preprocessed_datasets/mrc_valid.json'
+MRC_TRAIN_SAVE_PATH = 'datasets/preprocessed_datasets/mrc_train.json'
+MRC_VALID_SAVE_PATH = 'datasets/preprocessed_datasets/mrc_valid.json'
 
 # multi label cls step inference result
 multi_label_cls_train_results_path = 'inference_results/multi_label_cls_results/in_use/train_results.json'
@@ -42,212 +41,474 @@ second_step_inference_train_save_path = 'inference_results/mrc_results/in_use/se
 second_step_inference_valid_save_path = 'inference_results/mrc_results/in_use/second_step/valid_results.json'
 
 
-class InitTrainExample:
-    """
-        用于结构化 init-train.txt 中的数据
+def convert_init_train_examples_to_squad_json_format(output_save_path, is_train=True):
+    if is_train:
+        examples = read_init_train_train_examples()
+        squad_json_title = 'train examples'
+    else:
+        squad_json_title = 'valid examples'
+        examples = read_init_train_valid_examples()
 
-        text: str
-        relations: [{'relation': '', 'subject': '', 'object': ''}]
-    """
-    def __init__(self, text, relations):
-        self.text = text
-        self.relations = relations  # list of dict
+    relation_questions_dict = extract_examples_dict_from_relation_questions()
 
+    squad_json = get_squad_json_template(squad_json_title)
 
-class RelationQuestionsExample:
-    """
-        用于结构化 relation_questions.txt 中的数据
+    qas_id = 1
+    for example_index, example in enumerate(examples):
+        text = example['text']
+        relations = example['relations']
 
-        relation_id: int
-        relation_name: str
-        relation_question_a: str
-        relation_question_b: str
-        relation_question_c: str
-    """
-    def __init__(
-            self,
-            relation_id,
-            relation_name,
-            relation_question_a,
-            relation_question_b,
-            relation_question_c,
-    ):
-        self.relation_id = relation_id
-        self.relation_name = relation_name
-        self.relation_question_a = relation_question_a
-        self.relation_question_b = relation_question_b
-        self.relation_question_c = relation_question_c
-
-
-def load_relation_questions_txt(filepath=relation_questions_txt_path):
-    if not tf.io.gfile.exists(filepath):
-        raise ValueError('Relation questions txt file {} not found'.format(filepath))
-    with tf.io.gfile.GFile(filepath, mode='r') as reader:
-        return reader.readlines()
-
-
-def extract_examples_from_init_train():
-    """
-        Init Train Example
-
-        'text': str,
-        relations: [{'relation': '', 'subject': '', 'object': ''}]
-    """
-    init_train = load_init_train_txt()
-    init_train_examples = []
-    for item in init_train:
-        item = json.loads(item)
-        text = item['text'].strip()
-        sro_list = item['sro_list']
-        relations = [
-            {
-                'relation': sro['relation'].strip(),
-                'subject': sro['subject'].strip(),
-                'object': sro['object'].strip()
-            } for sro in sro_list
-        ]
-        init_train_example = InitTrainExample(text, relations)
-        init_train_examples.append(init_train_example)
-
-    return init_train_examples
-
-
-def extract_examples_from_relation_questions():
-    """
-        Relation Questions Example
-
-            'relation_id': str,
-            'relation_name': str,
-            'relation_question_a': str,
-            'relation_question_b': str,
-            'relation_question_c': str
-    """
-    relation_questions = load_relation_questions_txt()
-    _, relations, _, _ = extract_relations_from_init_train_table()
-    relation_to_id_map = get_label_to_id_map(relations)
-
-    # 一个 relation 对应一个 dict
-    # 理论上应该有 53 个 relation 对应 53 个 dict
-    relation_questions_dict = collections.OrderedDict()
-    for index in range(0, len(relations)):
-        cur_index = index * 5
-
-        relation_name = relation_questions[cur_index][1:-2].split(',')[1].split(':')[1].strip()
-        relation_name = relation_name.replace('"', '')
-
-        relation_id = relation_to_id_map[relation_name]
-
-        question_a = relation_questions[cur_index + 1].split('：')[1].strip()
-        question_a = question_a.replace('？', '')
-
-        question_b = relation_questions[cur_index + 2].split('：')[1].strip()
-        question_b = question_b.replace('？', '')
-
-        question_c = relation_questions[cur_index + 3].split('：')[1].strip()
-        question_c = question_c.replace('？', '')
-
-        relation_questions_dict[relation_name] = RelationQuestionsExample(
-            relation_id, relation_name,
-            question_a, question_b, question_c
+        # 因为在构造某一个新样本的时候会丢失一部分的信息
+        # 因此在此处保存完整的样本信息，以便于在推断任务中使用
+        squad_json_paragraph = get_squad_json_paragraph_template(
+            text=text,
+            origin_relations=relations
         )
 
-    return relation_questions_dict
-
-
-def convert_example_to_squad_json_format(mrc_train_path, mrc_valid_path, cls_train_path, cls_valid_path):
-    init_train_examples = extract_examples_from_init_train()
-    relation_questions_dict = extract_examples_from_relation_questions()
-
-    # data for mrc
-    train_squad_json = {
-        'data': [
-            {
-                'title': 'train data',
-                'paragraphs': []
-            }
-        ]
-    }
-    valid_squad_json = {
-        'data': [
-            {
-                'title': 'eval data',
-                'paragraphs': []
-            }
-        ]
-    }
-    # 为每一条 example 分配一个唯一的字符串 id
-    _id = 0
-    for item_index, item in enumerate(init_train_examples):
-        text = item.text
-        relations = item.relations
-
-        # 针对当前文本，有若干个 问题 - 答案 对
-        squad_json_item = {
-            'context': text,
-            'qas': []
-        }
+        # 一个文本对应多个 relation
+        # 一个 relation 对应一个问答对
         for relation in relations:
+            s = relation['subject']
+            r = relation['relation']
+            o = relation['object']
 
-            # sro item
-            _subject = relation['subject']
-            _object = relation['object']
-            _relation = relation['relation']
+            s_start_pos = text.find(s)
+            o_start_pos = text.find(o)
 
-            # answer start position
-            _subject_start_position = text.find(_subject)
-            _object_start_position = text.find(_object)
-
-            # 当前 relation 对应的 question
-            relation_question = relation_questions_dict[_relation]
+            relation_question = relation_questions_dict[r]
             relation_question_a = relation_question.relation_question_a
-            relation_question_b = relation_question.relation_question_b.replace('subject', _subject)
+            relation_question_b = relation_question.relation_question_b.replace('subject', s)
 
-            # to squad json format
-            # question 1, for mrc
-            qas_item = {
-                'question': relation_question_a,
-                'answers': [
-                    {
-                        'text': _subject,
-                        'answer_start': _subject_start_position
-                    }
-                ],
-                'id': 'id_' + str(_id)
-            }
-            squad_json_item['qas'].append(qas_item)
-            _id += 1
+            squad_json_qas_item_a = get_squad_json_qas_item_template(
+                question=relation_question_a,
+                answers=[{
+                    'text': s,
+                    'answer_start': s_start_pos
+                }],
+                qas_id='id_' + str(qas_id)
+            )
+            qas_id += 1
+            squad_json_qas_item_b = get_squad_json_qas_item_template(
+                question=relation_question_b,
+                answers=[{
+                    'text': o,
+                    'answer_start': o_start_pos
+                }],
+                qas_id='id_' + str(qas_id)
+            )
+            qas_id += 1
 
-            # question 2, for mrc
-            qas_item = {
-                'question': relation_question_b,
-                'answers': [
-                    {
-                        'text': _object,
-                        'answer_start': _object_start_position
-                    }
-                ],
-                'id': 'id_' + str(_id)
-            }
-            squad_json_item['qas'].append(qas_item)
-            _id += 1
+            squad_json_paragraph['qas'].append(squad_json_qas_item_a)
+            squad_json_paragraph['qas'].append(squad_json_qas_item_b)
 
-        # 当前 item 被分到验证集
-        if (item_index + 1) % 10 == 0:
-            valid_squad_json['data'][0]['paragraphs'].append(squad_json_item)
-        else:
-            # 当前 item 被分到训练集
-            train_squad_json['data'][0]['paragraphs'].append(squad_json_item)
+        squad_json['data'][0]['paragraphs'].append(squad_json_paragraph)
 
-        if (item_index + 1) % 1000 == 0:
-            print(item_index + 1)
-
-    # 将 mrc 数据写入 json 文件
-    with tf.io.gfile.GFile(mrc_train_path, 'w') as writer:
-        writer.write(json.dumps(train_squad_json, ensure_ascii=False, indent=2))
+    with tf.io.gfile.GFile(output_save_path, mode='w') as writer:
+        writer.write(json.dumps(squad_json, ensure_ascii=False, indent=2))
     writer.close()
-    with tf.io.gfile.GFile(mrc_valid_path, 'w') as writer:
-        writer.write(json.dumps(valid_squad_json, ensure_ascii=False, indent=2))
-    writer.close()
+
+
+class SquadExample:
+
+    def __init__(
+            self,
+            qas_id,
+            question_text,
+            doc_tokens,
+            orig_answer_text=None,
+            start_position=None,
+            end_position=None,
+            is_impossible=False
+    ):
+        self.qas_id = qas_id
+        self.question_text = question_text
+        self.doc_tokens = doc_tokens
+        self.orig_answer_text = orig_answer_text
+        self.start_position = start_position
+        self.end_position = end_position
+        self.is_impossible = is_impossible
+
+
+class InputFeatures:
+
+    def __init__(
+            self,
+            unique_id,
+            example_index,
+            doc_span_index,
+            tokens,
+            token_to_orig_map,
+            token_is_max_context,
+            input_ids,
+            input_mask,
+            segment_ids,
+            start_position=None,
+            end_position=None,
+            is_impossible=None
+    ):
+        self.unique_id = unique_id
+        self.example_index = example_index
+        self.doc_span_index = doc_span_index
+        self.tokens = tokens
+        self.token_to_orig_map = token_to_orig_map
+        self.token_is_max_context = token_is_max_context
+        self.input_ids = input_ids
+        self.input_mask = input_mask
+        self.segment_ids = segment_ids
+        self.start_position = start_position
+        self.end_position = end_position
+        self.is_impossible = is_impossible
+
+
+class FeatureWriter(object):
+
+    def __init__(self, filename, is_training):
+        self.filename = filename
+        self.is_training = is_training
+        self.num_features = 0
+        tf.io.gfile.makedirs(os.path.dirname(filename))
+        self._writer = tf.io.TFRecordWriter(filename)
+
+    def process_feature(self, feature):
+        self.num_features += 1
+
+        def create_int_feature(values):
+            feature = tf.train.Feature(
+                int64_list=tf.train.Int64List(value=list(values)))
+            return feature
+
+        features = collections.OrderedDict()
+        features["unique_ids"] = create_int_feature([feature.unique_id])
+        features["input_ids"] = create_int_feature(feature.input_ids)
+        features["input_mask"] = create_int_feature(feature.input_mask)
+        features["segment_ids"] = create_int_feature(feature.segment_ids)
+
+        if self.is_training:
+            features["start_positions"] = create_int_feature([feature.start_position])
+            features["end_positions"] = create_int_feature([feature.end_position])
+            impossible = 0
+            if feature.is_impossible:
+                impossible = 1
+            features["is_impossible"] = create_int_feature([impossible])
+
+        tf_example = tf.train.Example(features=tf.train.Features(feature=features))
+        self._writer.write(tf_example.SerializeToString())
+
+    def close(self):
+        self._writer.close()
+
+
+def _improve_answer_span(
+        doc_tokens,
+        input_start,
+        input_end,
+        tokenizer,
+        orig_answer_text
+):
+    tok_answer_text = " ".join(tokenizer.tokenize(orig_answer_text))
+
+    for new_start in range(input_start, input_end + 1):
+        for new_end in range(input_end, new_start - 1, -1):
+            text_span = " ".join(doc_tokens[new_start:(new_end + 1)])
+            if text_span == tok_answer_text:
+                return new_start, new_end
+
+    return input_start, input_end
+
+
+def _check_is_max_context(doc_spans, cur_span_index, position):
+    best_score = None
+    best_span_index = None
+    for (span_index, doc_span) in enumerate(doc_spans):
+        end = doc_span.start + doc_span.length - 1
+        if position < doc_span.start:
+            continue
+        if position > end:
+            continue
+        num_left_context = position - doc_span.start
+        num_right_context = end - position
+        score = min(num_left_context, num_right_context) + 0.01 * doc_span.length
+        if best_score is None or score > best_score:
+            best_score = score
+            best_span_index = span_index
+
+    return cur_span_index == best_span_index
+
+
+def read_squad_examples(input_file, is_training):
+
+    with tf.io.gfile.GFile(input_file, "r") as reader:
+        input_data = json.load(reader)["data"]
+
+    def is_whitespace(c):
+        if c == " " or c == "\t" or c == "\r" or c == "\n" or ord(c) == 0x202F:
+            return True
+        return False
+
+    examples = []
+    for entry in input_data:
+        for paragraph in entry["paragraphs"]:
+            paragraph_text = paragraph["context"]
+            doc_tokens = []
+            char_to_word_offset = []
+            prev_is_whitespace = True
+            for c in paragraph_text:
+                if is_whitespace(c):
+                    prev_is_whitespace = True
+                else:
+                    if prev_is_whitespace:
+                        doc_tokens.append(c)
+                    else:
+                        doc_tokens[-1] += c
+                    prev_is_whitespace = False
+                char_to_word_offset.append(len(doc_tokens) - 1)
+
+            for qa in paragraph["qas"]:
+                qas_id = qa["id"]
+                question_text = qa["question"]
+                start_position = None
+                end_position = None
+                orig_answer_text = None
+                is_impossible = False
+                if is_training:
+
+                    if (len(qa["answers"]) != 1) and (not is_impossible):
+                        raise ValueError(
+                            "For training, each question should have exactly 1 answer.")
+                    if not is_impossible:
+                        answer = qa["answers"][0]
+                        orig_answer_text = answer["text"]
+                        answer_offset = answer["answer_start"]
+                        answer_length = len(orig_answer_text)
+                        start_position = char_to_word_offset[answer_offset]
+                        end_position = char_to_word_offset[answer_offset + answer_length - 1]
+                        actual_text = " ".join(doc_tokens[start_position:(end_position + 1)])
+                        cleaned_answer_text = " ".join(
+                            tokenization.whitespace_tokenize(orig_answer_text))
+                        if actual_text.find(cleaned_answer_text) == -1:
+                            logging.warning(
+                                "Could not find answer: '%s' vs. '%s'",
+                                actual_text, cleaned_answer_text
+                            )
+                            continue
+                    else:
+                        start_position = -1
+                        end_position = -1
+                        orig_answer_text = ""
+
+                example = SquadExample(
+                    qas_id=qas_id,
+                    question_text=question_text,
+                    doc_tokens=doc_tokens,
+                    orig_answer_text=orig_answer_text,
+                    start_position=start_position,
+                    end_position=end_position,
+                    is_impossible=is_impossible)
+                examples.append(example)
+
+    return examples
+
+
+def convert_examples_to_features(
+        examples,
+        tokenizer,
+        max_seq_length,
+        doc_stride,
+        max_query_length,
+        is_training,
+        output_fn,
+        batch_size=None
+):
+
+    base_id = 1000000000
+    unique_id = base_id
+    feature = None
+    for (example_index, example) in enumerate(examples):
+        query_tokens = tokenizer.tokenize(example.question_text)
+
+        if len(query_tokens) > max_query_length:
+            query_tokens = query_tokens[0:max_query_length]
+
+        tok_to_orig_index = []
+        orig_to_tok_index = []
+        all_doc_tokens = []
+        for (i, token) in enumerate(example.doc_tokens):
+            orig_to_tok_index.append(len(all_doc_tokens))
+            sub_tokens = tokenizer.tokenize(token)
+            for sub_token in sub_tokens:
+                tok_to_orig_index.append(i)
+                all_doc_tokens.append(sub_token)
+
+        tok_start_position = None
+        tok_end_position = None
+        if is_training and example.is_impossible:
+            tok_start_position = -1
+            tok_end_position = -1
+        if is_training and not example.is_impossible:
+            tok_start_position = orig_to_tok_index[example.start_position]
+            if example.end_position < len(example.doc_tokens) - 1:
+                tok_end_position = orig_to_tok_index[example.end_position + 1] - 1
+            else:
+                tok_end_position = len(all_doc_tokens) - 1
+            (tok_start_position, tok_end_position) = _improve_answer_span(
+                all_doc_tokens, tok_start_position, tok_end_position, tokenizer,
+                example.orig_answer_text)
+
+        # The -3 accounts for [CLS], [SEP] and [SEP]
+        max_tokens_for_doc = max_seq_length - len(query_tokens) - 3
+
+        _DocSpan = collections.namedtuple(
+            "DocSpan", ["start", "length"]
+        )
+        doc_spans = []
+        start_offset = 0
+        while start_offset < len(all_doc_tokens):
+            length = len(all_doc_tokens) - start_offset
+            if length > max_tokens_for_doc:
+                length = max_tokens_for_doc
+            doc_spans.append(_DocSpan(start=start_offset, length=length))
+            if start_offset + length == len(all_doc_tokens):
+                break
+            start_offset += min(length, doc_stride)
+
+        for (doc_span_index, doc_span) in enumerate(doc_spans):
+            tokens = []
+            token_to_orig_map = {}
+            token_is_max_context = {}
+            segment_ids = []
+            tokens.append("[CLS]")
+            segment_ids.append(0)
+            for token in query_tokens:
+                tokens.append(token)
+                segment_ids.append(0)
+            tokens.append("[SEP]")
+            segment_ids.append(0)
+
+            for i in range(doc_span.length):
+                split_token_index = doc_span.start + i
+                token_to_orig_map[len(tokens)] = tok_to_orig_index[split_token_index]
+
+                is_max_context = _check_is_max_context(
+                    doc_spans, doc_span_index, split_token_index
+                )
+                token_is_max_context[len(tokens)] = is_max_context
+                tokens.append(all_doc_tokens[split_token_index])
+                segment_ids.append(1)
+            tokens.append("[SEP]")
+            segment_ids.append(1)
+
+            input_ids = tokenizer.convert_tokens_to_ids(tokens)
+
+            input_mask = [1] * len(input_ids)
+
+            # Zero-pad up to the sequence length.
+            while len(input_ids) < max_seq_length:
+                input_ids.append(0)
+                input_mask.append(0)
+                segment_ids.append(0)
+
+            assert len(input_ids) == max_seq_length
+            assert len(input_mask) == max_seq_length
+            assert len(segment_ids) == max_seq_length
+
+            start_position = None
+            end_position = None
+            if is_training and not example.is_impossible:
+                # For training, if our document chunk does not contain an annotation
+                # we throw it out, since there is nothing to predict.
+                doc_start = doc_span.start
+                doc_end = doc_span.start + doc_span.length - 1
+                out_of_span = False
+                if not (tok_start_position >= doc_start and
+                        tok_end_position <= doc_end):
+                    out_of_span = True
+                if out_of_span:
+                    start_position = 0
+                    end_position = 0
+                else:
+                    doc_offset = len(query_tokens) + 2
+                    start_position = tok_start_position - doc_start + doc_offset
+                    end_position = tok_end_position - doc_start + doc_offset
+
+            if is_training and example.is_impossible:
+                start_position = 0
+                end_position = 0
+
+            feature = InputFeatures(
+                unique_id=unique_id,
+                example_index=example_index,
+                doc_span_index=doc_span_index,
+                tokens=tokens,
+                token_to_orig_map=token_to_orig_map,
+                token_is_max_context=token_is_max_context,
+                input_ids=input_ids,
+                input_mask=input_mask,
+                segment_ids=segment_ids,
+                start_position=start_position,
+                end_position=end_position,
+                is_impossible=example.is_impossible)
+
+            # Run callback
+            if is_training:
+                output_fn(feature)
+            else:
+                output_fn(feature, is_padding=False)
+
+            unique_id += 1
+
+    if not is_training and feature:
+        assert batch_size
+        num_padding = 0
+        num_examples = unique_id - base_id
+        if unique_id % batch_size != 0:
+            num_padding = batch_size - (num_examples % batch_size)
+        logging.info("Adding padding examples to make sure no partial batch.")
+        logging.info("Adds %d padding examples for inference.", num_padding)
+        dummy_feature = copy.deepcopy(feature)
+        for _ in range(num_padding):
+            dummy_feature.unique_id = unique_id
+
+            # Run callback
+            output_fn(feature, is_padding=True)
+            unique_id += 1
+
+    return unique_id - base_id
+
+
+def generate_tfrecord_from_json_file(
+        input_file_path,
+        vocab_file_path,
+        output_file_path,
+        max_seq_len=384,
+        max_query_len=64,
+        doc_stride=128
+):
+    examples = read_squad_examples(
+        input_file=input_file_path,
+        is_training=is_training
+    )
+
+    tokenizer = tokenization.FullTokenizer(vocab_file=vocab_file_path)
+    writer = FeatureWriter(filename=output_file_path, is_training=True)
+    convert_examples_to_features(
+        examples=examples,
+        tokenizer=tokenizer,
+        max_seq_length=max_seq_len,
+        doc_stride=doc_stride,
+        max_query_length=max_query_len,
+        is_training=True,
+        output_fn=writer.process_feature,
+        batch_size=None
+    )
+
+    meta_data = {
+        'data_size': writer.num_features,
+        'max_seq_len': max_seq_len,
+        'max_query_len': max_query_len,
+        'doc_stride': doc_stride
+    }
+
+    return meta_data
 
 
 def convert_inference_results_for_first_step(inference_results_path, convert_results_save_path):
