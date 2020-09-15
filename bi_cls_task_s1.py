@@ -13,10 +13,12 @@ from optimization import create_optimizer
 from create_models import create_binary_cls_model
 from utils.distribu_utils import get_distribution_strategy
 from utils.distribu_utils import get_strategy_scope
-from data_processors.bi_cls_data_processor_s1 import read_examples_from_init_train
+from data_processors.bi_cls_data_processor_s1 import read_train_examples_from_init_train
+from data_processors.bi_cls_data_processor_s1 import read_valid_examples_from_init_train
 from data_processors.bi_cls_data_processor_s1 import convert_examples_to_features
 from data_processors.bi_cls_data_processor_s1 import FeatureWriter
 from data_processors.bi_cls_data_processor_s1 import generate_tfrecord_from_json_file
+from data_processors.bi_cls_data_processor_s1 import postprocess_output
 from data_processors.inputs_pipeline import read_and_batch_from_bi_cls_record
 from data_processors.inputs_pipeline import map_data_to_bi_cls_train_task
 
@@ -254,6 +256,75 @@ class BiCLSTaskS1:
             )
 
         return callbacks
+
+    def predict_valid_data(self):
+        with get_strategy_scope(self.distribution_strategy):
+            model = create_binary_cls_model(
+                is_train=True,
+                use_pretrain=False
+            )
+            checkpoint = tf.train.Checkpoint(model=model)
+            checkpoint.restore(
+                tf.train.latest_checkpoint(
+                    self.inference_model_dir
+                )
+            )
+
+        valid_examples = read_valid_examples_from_init_train(self.valid_input_file_path)
+        valid_writer = FeatureWriter(
+            filename=self.predict_valid_output_file_path
+        )
+        valid_features = []
+
+        def _append_feature(feature):
+            valid_features.append(feature)
+            valid_writer.process_feature(feature)
+
+        convert_examples_to_features(
+            examples=valid_examples,
+            vocab_file_path=self.vocab_file_path,
+            max_seq_len=self.max_seq_len,
+            output_fn=_append_feature
+        )
+
+        valid_writer.close()
+
+        valid_dataset = read_and_batch_from_bi_cls_record(
+            filename=self.predict_valid_output_file_path,
+            max_seq_len=self.max_seq_len,
+            repeat=False,
+            shuffle=False,
+            batch_size=self.predict_batch_size
+        )
+        valid_results = []
+        for data in valid_dataset:
+            unique_ids = data.pop('unique_ids')
+            model_output = model.predict(
+                map_data_to_bi_cls_train_task(data)
+            )
+            batch_probs = model_output['probs']
+            for result in self.generate_predict_item(unique_ids, batch_probs):
+                valid_results.append(result)
+
+        postprocess_output(
+            all_examples=valid_examples,
+            all_features=valid_features,
+            all_results=valid_results,
+            threshold=0.5,
+            results_save_path=os.path.join(self.inference_results_save_dir, 'valid_results.json')
+        )
+
+    def generate_predict_item(self, unique_ids, batch_probs):
+        RawResult = collections.namedtuple(
+            'RawResult',
+            ['unique_id', 'probs']
+        )
+
+        for unique_id, probs in zip(unique_ids, batch_probs):
+            yield RawResult(
+                unique_id=unique_id.numpy(),
+                probs=probs
+            )
 
 
 # Global Variables ############

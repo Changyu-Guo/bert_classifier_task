@@ -14,25 +14,25 @@ RELATION_QUESTIONS_TXT_PATH = 'datasets/raw_datasets/relation_questions.txt'
 
 
 class InitTrainExample:
-    def __init__(self, text, relations):
+    def __init__(self, text, sros):
         self.text = text
-        self.relations = relations
+        self.sros = sros
 
 
 class RelationQuestionsExample:
     def __init__(
             self,
-            relation_id,
+            relation_index,
             relation_name,
-            relation_question_a,
-            relation_question_b,
-            relation_question_c
+            question_a,
+            question_b,
+            question_c
     ):
-        self.relation_id = relation_id
+        self.relation_index = relation_index
         self.relation_name = relation_name
-        self.relation_question_a = relation_question_a
-        self.relation_question_b = relation_question_b
-        self.relation_question_c = relation_question_c
+        self.question_a = question_a
+        self.question_b = question_b
+        self.question_c = question_c
 
 
 def load_init_train_table_txt(init_train_table_txt_path=INIT_TRAIN_TABLE_TXT_PATH):
@@ -93,14 +93,14 @@ def extract_examples_from_init_train(init_train_path=INIT_TRAIN_TXT_PATH):
         item = json.loads(item)
         text = item['text'].strip()
         sro_list = item['sro_list']
-        relations = [
+        sros = [
             {
                 'relation': sro['relation'].strip(),
                 'subject': sro['subject'].strip(),
                 'object': sro['object'].strip()
             } for sro in sro_list
         ]
-        init_train_example = InitTrainExample(text, relations)
+        init_train_example = InitTrainExample(text, sros)
         init_train_examples.append(init_train_example)
     return init_train_examples
 
@@ -122,7 +122,7 @@ def split_init_train_data(
     for index, example in enumerate(init_train_examples):
         item = {
             'text': example.text,
-            'relations': example.relations
+            'sros': example.sros
         }
         if (index + 1) % split_valid_index == 0:
             split_valid_examples.append(item)
@@ -169,7 +169,7 @@ def extract_examples_dict_from_relation_questions(
         relation_name = relation_questions[cur_index][1:-2].split(',')[1].split(':')[1].strip()
         relation_name = relation_name.replace('"', '')
 
-        relation_id = relation_to_index_map[relation_name]
+        relation_index = relation_to_index_map[relation_name]
 
         question_a = relation_questions[cur_index + 1].split('：')[1].strip()
         question_a = question_a.replace('？', '')
@@ -181,7 +181,7 @@ def extract_examples_dict_from_relation_questions(
         question_c = question_c.replace('？', '')
 
         relation_questions_dict[relation_name] = RelationQuestionsExample(
-            relation_id, relation_name,
+            relation_index, relation_name,
             question_a, question_b, question_c
         )
 
