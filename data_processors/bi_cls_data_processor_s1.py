@@ -6,6 +6,7 @@ import collections
 import tensorflow as tf
 from tokenizers import BertWordPieceTokenizer
 from data_processors.commom import extract_relations_from_init_train_table
+from sklearn.metrics import precision_recall_fscore_support
 
 
 # 每个 relation 对应一个 example
@@ -349,11 +350,12 @@ def postprocess_output(
         unique_id = feature.unique_id
         origin_is_valid = feature.is_valid
 
+        # 每一个 feature 一个 result
         feature_result = unique_id_to_result[unique_id]
         pred_probs = feature_result.probs
 
         # return a Tensor
-        if pred_probs >= 0.5:
+        if pred_probs >= threshold:
             pred_is_valid = 1
         else:
             pred_is_valid = 0
@@ -362,7 +364,7 @@ def postprocess_output(
         all_pred_is_valid.append(pred_is_valid)
 
     precision, recall, f1, _ = precision_recall_fscore_support(
-        all_origin_is_valid, all_pred_is_valid,
+        all_origin_is_valid, all_pred_is_valid, average='binary'
     )
 
     print('precision', precision)

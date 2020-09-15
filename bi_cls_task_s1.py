@@ -22,6 +22,7 @@ from data_processors.bi_cls_data_processor_s1 import generate_valid_tfrecord_fro
 from data_processors.bi_cls_data_processor_s1 import postprocess_output
 from data_processors.inputs_pipeline import read_and_batch_from_bi_cls_record
 from data_processors.inputs_pipeline import map_data_to_bi_cls_train_task
+from data_processors.inputs_pipeline import map_data_to_bi_cls_predict_task
 
 
 class BiCLSTaskS1:
@@ -261,17 +262,6 @@ class BiCLSTaskS1:
         return callbacks
 
     def predict_valid_data(self):
-        with get_strategy_scope(self.distribution_strategy):
-            model = create_binary_cls_model(
-                is_train=False,
-                use_pretrain=False
-            )
-            checkpoint = tf.train.Checkpoint(model=model)
-            checkpoint.restore(
-                tf.train.latest_checkpoint(
-                    self.inference_model_dir
-                )
-            )
 
         valid_examples = read_valid_examples_from_init_train(self.valid_input_file_path)
         valid_writer = FeatureWriter(
@@ -300,7 +290,25 @@ class BiCLSTaskS1:
             batch_size=self.predict_batch_size
         )
         valid_results = []
-        for data in valid_dataset:
+
+        with get_strategy_scope(self.distribution_strategy):
+            model = create_binary_cls_model(
+                is_train=False,
+                use_pretrain=False
+            )
+            checkpoint = tf.train.Checkpoint(model=model)
+            checkpoint.restore(
+                tf.train.latest_checkpoint(
+                    self.inference_model_dir
+                )
+            )
+            logging.info('Loading checkpoint from {}'.format(
+                tf.train.latest_checkpoint(
+                    self.inference_model_dir
+                )
+            ))
+
+        for index, data in enumerate(valid_dataset):
             unique_ids = data.pop('unique_ids')
             model_output = model.predict(
                 map_data_to_bi_cls_train_task(data)
@@ -308,6 +316,8 @@ class BiCLSTaskS1:
             batch_probs = model_output['probs']
             for result in self.generate_predict_item(unique_ids, batch_probs):
                 valid_results.append(result)
+
+            print(index)
 
         postprocess_output(
             all_features=valid_features,
@@ -357,7 +367,7 @@ VOCAB_FILE_PATH = 'vocabs/bert-base-chinese-vocab.txt'
 
 # dataset process relate
 MAX_SEQ_LEN = 165
-PREDICT_BATCH_SIZE = 3000
+PREDICT_BATCH_SIZE = 12000
 PREDICT_THRESHOLD = 0.5
 
 # train relate
@@ -404,12 +414,11 @@ def bi_cls_s1_main():
         use_pretrain=True,
         use_prev_record=True,
         batch_size=48,
-        inference_model_dir='saved_models/bi_cls_s1_models/'
+        inference_model_dir='saved_models/bi_cls_s1_models'
     )
     return task
 
 
 if __name__ == '__main__':
     task = bi_cls_s1_main()
-    task.train()
-
+    task.predict_valid_data()

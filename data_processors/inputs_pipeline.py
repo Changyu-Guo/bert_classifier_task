@@ -87,6 +87,7 @@ def read_and_batch_from_bi_cls_record(
         batch_size=None
 ):
     name_to_features = {
+        'unique_ids': tf.io.FixedLenFeature([], tf.int64),
         'inputs_ids': tf.io.FixedLenFeature([max_seq_len], tf.int64),
         'inputs_mask': tf.io.FixedLenFeature([max_seq_len], tf.int64),
         'segment_ids': tf.io.FixedLenFeature([max_seq_len], tf.int64),
@@ -170,3 +171,12 @@ def map_data_to_bi_cls_train_task(data):
     }
 
     return x, y
+
+
+def map_data_to_bi_cls_predict_task(data):
+    x = {
+        'inputs_ids': data['inputs_ids'],
+        'inputs_mask': data['inputs_mask'],
+        'segment_ids': data['segment_ids']
+    }
+    return x
