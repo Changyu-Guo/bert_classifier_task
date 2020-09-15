@@ -91,8 +91,8 @@ def create_mrc_model(max_seq_len, is_train=True, use_pretrain=False):
 
 
 def create_binary_cls_model(is_train=True, use_pretrain=False):
-    inputs_ids = tf.keras.Input((None,), name='input_ids', dtype=tf.int64)
-    inputs_mask = tf.keras.Input((None,), name='input_mask', dtype=tf.int64)
+    inputs_ids = tf.keras.Input((None,), name='inputs_ids', dtype=tf.int64)
+    inputs_mask = tf.keras.Input((None,), name='inputs_mask', dtype=tf.int64)
     segment_ids = tf.keras.Input((None,), name='segment_ids', dtype=tf.int64)
 
     if use_pretrain:
@@ -111,12 +111,12 @@ def create_binary_cls_model(is_train=True, use_pretrain=False):
     prob = tf.keras.layers.Dense(1, activation='sigmoid')(pooled_output)
     model = tf.keras.Model(
         inputs={
-            'input_ids': inputs_ids,
-            'input_mask': inputs_mask,
+            'inputs_ids': inputs_ids,
+            'inputs_mask': inputs_mask,
             'segment_ids': segment_ids
         },
         outputs={
-            'prob': prob
+            'probs': prob
         }
     )
 

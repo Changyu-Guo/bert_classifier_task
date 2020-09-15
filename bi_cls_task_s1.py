@@ -21,7 +21,7 @@ from data_processors.inputs_pipeline import read_and_batch_from_bi_cls_record
 from data_processors.inputs_pipeline import map_data_to_bi_cls_train_task
 
 
-class BiCLSTaskS2:
+class BiCLSTaskS1:
 
     def __init__(
             self,
@@ -285,7 +285,7 @@ MAX_SEQ_LEN = 165
 PREDICT_BATCH_SIZE = 128
 
 # train relate
-LEARNING_RATE = 1e-4
+LEARNING_RATE = 3e-5
 
 # inference relate
 INFERENCE_RESULTS_SAVE_DIR = 'inference_results/mrc_results'
@@ -320,7 +320,7 @@ def get_model_params():
 
 def bi_cls_s1_main():
     logging.set_verbosity(logging.INFO)
-    task = BiCLSTaskS2(
+    task = BiCLSTaskS1(
         get_model_params(),
         use_pretrain=True,
         use_prev_record=False,

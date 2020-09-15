@@ -140,8 +140,8 @@ def map_data_to_multi_label_cls_predict_task(data):
 
 def map_data_to_mrc_train_task(data):
     x = {
-        'input_ids': data['input_ids'],
-        'input_mask': data['input_mask'],
+        'inputs_ids': data['inputs_ids'],
+        'inputs_mask': data['inputs_mask'],
         'segment_ids': data['segment_ids']
     }
     y = {
@@ -153,8 +153,8 @@ def map_data_to_mrc_train_task(data):
 
 def map_data_to_mrc_predict_task(data):
     return {
-        'input_ids': data['input_ids'],
-        'input_mask': data['input_mask'],
+        'inputs_ids': data['inputs_ids'],
+        'inputs_mask': data['inputs_mask'],
         'segment_ids': data['segment_ids']
     }
 
@@ -166,7 +166,7 @@ def map_data_to_bi_cls_train_task(data):
         'segment_ids': data['segment_ids']
     }
     y = {
-        'prob': data['is_valid']
+        'probs': data['is_valid']
     }
 
     return x, y

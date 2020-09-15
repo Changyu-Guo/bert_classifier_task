@@ -6,3 +6,5 @@
 
 /pretrained_model
 
+
+datasets/tfrecord_datasets/bi_cls_s1_train.tfrecord
