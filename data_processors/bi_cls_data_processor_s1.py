@@ -343,7 +343,6 @@ def postprocess_output(
     for result in all_results:
         unique_id_to_result[result.unique_id] = result
 
-    inference_results = []
     all_origin_is_valid = []
     all_pred_is_valid = []
     for feature in all_features:

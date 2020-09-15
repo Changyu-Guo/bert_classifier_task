@@ -5,6 +5,7 @@ import json
 import time
 import collections
 
+import numpy as np
 import tensorflow as tf
 from absl import logging
 
@@ -13,6 +14,7 @@ from optimization import create_optimizer
 from create_models import create_binary_cls_model
 from utils.distribu_utils import get_distribution_strategy
 from utils.distribu_utils import get_strategy_scope
+from sklearn.metrics import precision_recall_fscore_support
 from data_processors.bi_cls_data_processor_s1 import read_train_examples_from_init_train
 from data_processors.bi_cls_data_processor_s1 import read_valid_examples_from_init_train
 from data_processors.bi_cls_data_processor_s1 import convert_examples_to_features
@@ -216,7 +218,11 @@ class BiCLSTaskS1:
             steps_per_epoch=self.steps_per_epoch,
             callbacks=callbacks,
             verbose=1,
-            validation_data=valid_dataset
+            validation_data=valid_dataset,
+            class_weight={
+                '0': 1,
+                '1': 3
+            }
         )
 
         # 保存最后一个 epoch 的模型
@@ -311,7 +317,7 @@ class BiCLSTaskS1:
         for index, data in enumerate(valid_dataset):
             unique_ids = data.pop('unique_ids')
             model_output = model.predict(
-                map_data_to_bi_cls_train_task(data)
+                map_data_to_bi_cls_predict_task(data)
             )
             batch_probs = model_output['probs']
             for result in self.generate_predict_item(unique_ids, batch_probs):
@@ -325,6 +331,76 @@ class BiCLSTaskS1:
             threshold=self.predict_threshold,
             results_save_path=os.path.join(self.inference_results_save_dir, 'valid_results.json')
         )
+
+    def predict_valid_data_2(self):
+
+        valid_dataset = read_and_batch_from_bi_cls_record(
+            filename=self.predict_valid_output_file_path,
+            max_seq_len=self.max_seq_len,
+            repeat=False,
+            shuffle=False,
+            batch_size=self.predict_batch_size
+        )
+
+        with get_strategy_scope(self.distribution_strategy):
+            model = create_binary_cls_model(
+                is_train=False,
+                use_pretrain=False
+            )
+            checkpoint = tf.train.Checkpoint(model=model)
+            checkpoint.restore(
+                tf.train.latest_checkpoint(
+                    self.inference_model_dir
+                )
+            )
+            logging.info('Loading checkpoint from {}'.format(
+                tf.train.latest_checkpoint(
+                    self.inference_model_dir
+                )
+            ))
+
+        origin_is_valid = []
+        pred_is_valid = []
+        batched_origin_is_valid = []
+        batched_pred_is_valid = []
+        for index, data in enumerate(valid_dataset):
+            x, y = map_data_to_bi_cls_train_task(data)
+
+            model_output = model.predict(x)
+
+            batch_probs = model_output['probs']
+
+            batch_probs = tf.where(batch_probs > self.predict_threshold, 1, 0)
+
+            batch_probs = batch_probs.numpy().flatten().tolist()
+
+            origin_is_valid.extend(y['probs'].numpy().tolist())
+            pred_is_valid.extend(batch_probs)
+
+            print(index)
+
+        def chunks(ls, n):
+            for i in range(0, len(ls), n):
+                yield ls[i: i + n]
+
+        for chunk in chunks(origin_is_valid, 53):
+            batched_origin_is_valid.append(chunk)
+
+        for chunk in chunks(pred_is_valid, 53):
+            batched_pred_is_valid.append(chunk)
+
+        precision, recall, f1, _ = precision_recall_fscore_support(
+            batched_origin_is_valid, batched_pred_is_valid, average='micro'
+        )
+        print(precision)
+        print(recall)
+        print(f1)
+        precision, recall, f1, _ = precision_recall_fscore_support(
+            batched_origin_is_valid, batched_pred_is_valid, average='macro'
+        )
+        print(precision)
+        print(recall)
+        print(f1)
 
     def generate_predict_item(self, unique_ids, batch_probs):
         RawResult = collections.namedtuple(
@@ -367,7 +443,7 @@ VOCAB_FILE_PATH = 'vocabs/bert-base-chinese-vocab.txt'
 
 # dataset process relate
 MAX_SEQ_LEN = 165
-PREDICT_BATCH_SIZE = 12000
+PREDICT_BATCH_SIZE = 10000
 PREDICT_THRESHOLD = 0.5
 
 # train relate
@@ -382,7 +458,7 @@ def get_model_params():
         lambda: None,
         task_name=TASK_NAME,
         distribution_strategy='one_device',
-        epochs=4,
+        epochs=8,
         predict_batch_size=PREDICT_BATCH_SIZE,
         model_save_dir=MODEL_SAVE_DIR,
         train_input_file_path=TRAIN_INPUT_FILE_PATH,
@@ -421,4 +497,4 @@ def bi_cls_s1_main():
 
 if __name__ == '__main__':
     task = bi_cls_s1_main()
-    task.predict_valid_data()
+    task.train()
