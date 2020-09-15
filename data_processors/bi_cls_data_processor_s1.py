@@ -359,7 +359,7 @@ def postprocess_output(
             pred_is_valid = 0
 
         all_origin_is_valid.append(origin_is_valid)
-        all_pred_is_valid.append(pred_is_valid.numpy())
+        all_pred_is_valid.append(pred_is_valid)
 
     precision, recall, f1, _ = precision_recall_fscore_support(
         all_origin_is_valid, all_pred_is_valid,

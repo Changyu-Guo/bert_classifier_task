@@ -17,7 +17,8 @@ from data_processors.bi_cls_data_processor_s1 import read_train_examples_from_in
 from data_processors.bi_cls_data_processor_s1 import read_valid_examples_from_init_train
 from data_processors.bi_cls_data_processor_s1 import convert_examples_to_features
 from data_processors.bi_cls_data_processor_s1 import FeatureWriter
-from data_processors.bi_cls_data_processor_s1 import generate_tfrecord_from_json_file
+from data_processors.bi_cls_data_processor_s1 import generate_train_tfrecord_from_json_file
+from data_processors.bi_cls_data_processor_s1 import generate_valid_tfrecord_from_json_file
 from data_processors.bi_cls_data_processor_s1 import postprocess_output
 from data_processors.inputs_pipeline import read_and_batch_from_bi_cls_record
 from data_processors.inputs_pipeline import map_data_to_bi_cls_train_task
@@ -50,6 +51,7 @@ class BiCLSTaskS1:
         self.valid_input_file_path = kwargs['valid_input_file_path']
         self.train_output_file_path = kwargs['train_output_file_path']
         self.valid_output_file_path = kwargs['valid_output_file_path']
+        self.predict_train_output_file_path = kwargs['predict_train_output_file_path']
         self.predict_valid_output_file_path = kwargs['predict_valid_output_file_path']
         self.train_output_meta_path = kwargs['train_output_meta_path']
         self.valid_output_meta_path = kwargs['valid_output_meta_path']
@@ -85,6 +87,7 @@ class BiCLSTaskS1:
         # inference
         self.inference_results_save_dir = kwargs['inference_results_save_dir']
         self.predict_batch_size = kwargs['predict_batch_size']
+        self.predict_threshold = kwargs['predict_threshold']
 
         # 如果使用之前生成的 tfrecord 文件，则必须有：
         # 1. tfrecord 文件本身
@@ -122,7 +125,7 @@ class BiCLSTaskS1:
 
         else:
 
-            self.train_meta_data = generate_tfrecord_from_json_file(
+            self.train_meta_data = generate_train_tfrecord_from_json_file(
                 input_file_path=self.train_input_file_path,
                 vocab_file_path=self.vocab_file_path,
                 output_file_path=self.train_output_file_path,
@@ -132,7 +135,7 @@ class BiCLSTaskS1:
                 writer.write(json.dumps(self.train_meta_data, ensure_ascii=False, indent=2))
             writer.close()
 
-            self.valid_meta_data = generate_tfrecord_from_json_file(
+            self.valid_meta_data = generate_valid_tfrecord_from_json_file(
                 input_file_path=self.valid_input_file_path,
                 vocab_file_path=self.vocab_file_path,
                 output_file_path=self.valid_output_file_path,
@@ -260,7 +263,7 @@ class BiCLSTaskS1:
     def predict_valid_data(self):
         with get_strategy_scope(self.distribution_strategy):
             model = create_binary_cls_model(
-                is_train=True,
+                is_train=False,
                 use_pretrain=False
             )
             checkpoint = tf.train.Checkpoint(model=model)
@@ -307,10 +310,9 @@ class BiCLSTaskS1:
                 valid_results.append(result)
 
         postprocess_output(
-            all_examples=valid_examples,
             all_features=valid_features,
             all_results=valid_results,
-            threshold=0.5,
+            threshold=self.predict_threshold,
             results_save_path=os.path.join(self.inference_results_save_dir, 'valid_results.json')
         )
 
@@ -339,6 +341,8 @@ VALID_INPUT_FILE_PATH = 'datasets/raw_datasets/init-train-valid.json'
 # tfrecord
 TRAIN_OUTPUT_FILE_PATH = 'datasets/tfrecord_datasets/bi_cls_s1_train.tfrecord'
 VALID_OUTPUT_FILE_PATH = 'datasets/tfrecord_datasets/bi_cls_s1_valid.tfrecord'
+PREDICT_TRAIN_OUTPUT_FILE_PATH = 'datasets/tfrecord_datasets/bi_cls_s1_predict_train.tfrecord'
+PREDICT_VALID_OUTPUT_FILE_PATH = 'datasets/tfrecord_datasets/bi_cls_s1_predict_valid.tfrecord'
 
 # tfrecord meta data
 TRAIN_OUTPUT_META_PATH = 'datasets/tfrecord_datasets/bi_cls_s1_train_meta.json'
@@ -353,13 +357,14 @@ VOCAB_FILE_PATH = 'vocabs/bert-base-chinese-vocab.txt'
 
 # dataset process relate
 MAX_SEQ_LEN = 165
-PREDICT_BATCH_SIZE = 128
+PREDICT_BATCH_SIZE = 3000
+PREDICT_THRESHOLD = 0.5
 
 # train relate
 LEARNING_RATE = 3e-5
 
 # inference relate
-INFERENCE_RESULTS_SAVE_DIR = 'inference_results/mrc_results'
+INFERENCE_RESULTS_SAVE_DIR = 'inference_results/bi_cls_s1_results'
 
 
 def get_model_params():
@@ -374,6 +379,8 @@ def get_model_params():
         valid_input_file_path=VALID_INPUT_FILE_PATH,
         train_output_file_path=TRAIN_OUTPUT_FILE_PATH,
         valid_output_file_path=VALID_OUTPUT_FILE_PATH,
+        predict_train_output_file_path=PREDICT_TRAIN_OUTPUT_FILE_PATH,
+        predict_valid_output_file_path=PREDICT_VALID_OUTPUT_FILE_PATH,
         train_output_meta_path=TRAIN_OUTPUT_META_PATH,
         valid_output_meta_path=VALID_OUTPUT_META_PATH,
         vocab_file_path=VOCAB_FILE_PATH,
@@ -385,7 +392,8 @@ def get_model_params():
         enable_checkpointing=False,  # Notice 开启此选项可能会存储大量的 Checkpoint ####
         enable_tensorboard=True,
         tensorboard_log_dir=TENSORBOARD_LOG_DIR,
-        inference_results_save_dir=INFERENCE_RESULTS_SAVE_DIR
+        inference_results_save_dir=INFERENCE_RESULTS_SAVE_DIR,
+        predict_threshold=PREDICT_THRESHOLD
     )
 
 
@@ -394,9 +402,9 @@ def bi_cls_s1_main():
     task = BiCLSTaskS1(
         get_model_params(),
         use_pretrain=True,
-        use_prev_record=False,
+        use_prev_record=True,
         batch_size=48,
-        inference_model_dir='saved_models/mrc_models/mrc_v3_epochs_10'
+        inference_model_dir='saved_models/bi_cls_s1_models/'
     )
     return task
 
