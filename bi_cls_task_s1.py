@@ -323,7 +323,7 @@ def bi_cls_s1_main():
     task = BiCLSTaskS2(
         get_model_params(),
         use_pretrain=True,
-        use_prev_record=True,
+        use_prev_record=False,
         batch_size=48,
         inference_model_dir='saved_models/mrc_models/mrc_v3_epochs_10'
     )

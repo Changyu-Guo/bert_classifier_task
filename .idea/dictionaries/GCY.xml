@@ -8,6 +8,7 @@
       <w>logits</w>
       <w>nbest</w>
       <w>probs</w>
+      <w>sros</w>
     </words>
   </dictionary>
 </component>

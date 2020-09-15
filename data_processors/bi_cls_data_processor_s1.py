@@ -85,40 +85,59 @@ def read_examples_from_init_train(init_train_path):
         init_train_examples = json.load(reader)
     reader.close()
 
-    _, all_relations, _, _ = extract_relations_from_init_train_table()
-    all_subjects = set()
+    # 53, 53, _, _
+    all_subjects, all_relations, _, _ = extract_relations_from_init_train_table()
 
-    # 获取所有的 subjects
-    for init_train_example in init_train_examples:
-        relations = init_train_example['relations']
-        for relation in relations:
-            all_subjects.add(relation['subject'])
+    # 根据 relation 获取当前 relation 的 index
+    relation_to_index_map = collections.OrderedDict()
+    for index, item in enumerate(all_relations):
+        relation_to_index_map[item] = index
+
+    # 所有的 subject 类型，理论上应该是 4 个
+    subjects_type = set(all_subjects)
 
     examples = []
 
     question_template = '这句话包含了subject的relation信息'
 
+    # 对没一条 example 处理
     for init_train_example in init_train_examples:
+        # 当前 example 的文本
         text = init_train_example['text']
-        relations = init_train_example['relations']
 
-        current_subjects = set([relation['subject'] for relation in relations])
-        current_relations = set([relation['relation'] for relation in relations])
+        # 当前 example 的所有 relation
+        sros = init_train_example['relations']
 
-        rest_subjects = all_subjects - current_subjects
+        # 当前 example 下所有不重复的 relation
+        relations = list(set([sro['relation'] for sro in sros]))
+
+        # 当前 example 下所有 relation 的 indices
+        relation_indices = [relation_to_index_map[relation] for relation in relations]
+
+        # 当前 example 中所有出现的 subject
+        current_subjects = set(all_subjects[index] for index in relation_indices)
+
+        rest_subjects = subjects_type - current_subjects
         rest_subjects = list(rest_subjects)
 
+        rest_relations = set(all_relations) - set(relations)
+        rest_relations = list(rest_relations)
+
+        # 选择未出现在当前 relations 中的 relation
+        # 用于构建负样本
         random_relations = select_random_items(
-            all_items=all_relations,
-            current_items=current_relations,
-            select_num=len(relations)
+            all_items=rest_relations,
+            current_items=set(),
+            select_num=len(sros)
         )
 
-        for relation_index, relation in enumerate(relations):
-            s = relation['subject']
-            r = relation['relation']
+        for sro_index, sro in enumerate(sros):
+            r = sro['relation']
 
-            question = question_template.replace('subject', s).replace('relation', r)
+            r_index = relation_to_index_map[r]
+            s_type = all_subjects[r_index]
+
+            question = question_template.replace('subject', s_type).replace('relation', r)
 
             # 每个 subject 和其对应的 relation 都有一个正样本
             example = Example(
@@ -129,8 +148,8 @@ def read_examples_from_init_train(init_train_path):
             examples.append(example)
 
             # 每个 subject 都和一个随机的未出现过的 relation 构成一个负样本
-            random_relation = random_relations[relation_index]
-            question = question_template.replace('subject', s).replace('relation', random_relation)
+            random_relation = random_relations[sro_index]
+            question = question_template.replace('subject', s_type).replace('relation', random_relation)
             example = Example(
                 text=text,
                 question=question,
@@ -138,23 +157,26 @@ def read_examples_from_init_train(init_train_path):
             )
             examples.append(example)
 
-            # 选择一个随机的未出现过的 subject 和 一个随机的 relation 构成一个负样本
-            random_subjects = select_random_items(
-                all_items=rest_subjects,
-                current_items=set(),
-                select_num=random.randint(2, 5)
-            )
+        if len(rest_subjects) != 0:
+            # 每一个未出现过的 subject 和 若干个随机的 relation 构成一个负样本
+            random_subjects = rest_subjects
             for random_subject in random_subjects:
-                random_index = random.randint(0, len(all_relations) - 1)
-                random_relation = all_relations[random_index]
-                question = question_template.replace('subject', random_subject)
-                question = question.replace('relation', random_relation)
-                example = Example(
-                    text=text,
-                    question=question,
-                    is_valid=0
+
+                # 若干个未出现过的 relation
+                random_relations_for_cur_subject = select_random_items(
+                    all_items=rest_relations,
+                    current_items=set(),
+                    select_num=random.randint(2, 10)
                 )
-                examples.append(example)
+                for random_relation in random_relations_for_cur_subject:
+                    question = question_template.replace('subject', random_subject)
+                    question = question.replace('relation', random_relation)
+                    example = Example(
+                        text=text,
+                        question=question,
+                        is_valid=0
+                    )
+                    examples.append(example)
     print(len(examples))
     return examples
 
