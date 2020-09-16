@@ -115,9 +115,7 @@ def create_binary_cls_model(is_train=True, use_pretrain=False):
             'inputs_mask': inputs_mask,
             'segment_ids': segment_ids
         },
-        outputs={
-            'probs': prob
-        }
+        outputs=prob
     )
 
     return model

@@ -94,7 +94,7 @@ def read_and_batch_from_bi_cls_record(
         'is_valid': tf.io.FixedLenFeature([], tf.int64)
     }
 
-    dataset = tf.data.TFRecordDataset(filename)
+    dataset = tf.data.TFRecordDataset(filename, compression_type='GZIP')
     if shuffle:
         dataset = dataset.shuffle(buffer_size=2020)
 
@@ -160,23 +160,12 @@ def map_data_to_mrc_predict_task(data):
     }
 
 
-def map_data_to_bi_cls_train_task(data):
+def map_data_to_bi_cls_task(data):
     x = {
         'inputs_ids': data['inputs_ids'],
         'inputs_mask': data['inputs_mask'],
         'segment_ids': data['segment_ids']
     }
-    y = {
-        'probs': data['is_valid']
-    }
+    y = data['is_valid']
 
     return x, y
-
-
-def map_data_to_bi_cls_predict_task(data):
-    x = {
-        'inputs_ids': data['inputs_ids'],
-        'inputs_mask': data['inputs_mask'],
-        'segment_ids': data['segment_ids']
-    }
-    return x

@@ -19,12 +19,10 @@ from data_processors.bi_cls_data_processor_s1 import read_train_examples_from_in
 from data_processors.bi_cls_data_processor_s1 import read_valid_examples_from_init_train
 from data_processors.bi_cls_data_processor_s1 import convert_examples_to_features
 from data_processors.bi_cls_data_processor_s1 import FeatureWriter
-from data_processors.bi_cls_data_processor_s1 import generate_train_tfrecord_from_json_file
-from data_processors.bi_cls_data_processor_s1 import generate_valid_tfrecord_from_json_file
+from data_processors.bi_cls_data_processor_s1 import generate_tfrecord_from_json_file
 from data_processors.bi_cls_data_processor_s1 import postprocess_output
 from data_processors.inputs_pipeline import read_and_batch_from_bi_cls_record
-from data_processors.inputs_pipeline import map_data_to_bi_cls_train_task
-from data_processors.inputs_pipeline import map_data_to_bi_cls_predict_task
+from data_processors.inputs_pipeline import map_data_to_bi_cls_task
 
 
 class BiCLSTaskS1:
@@ -128,21 +126,25 @@ class BiCLSTaskS1:
 
         else:
 
-            self.train_meta_data = generate_train_tfrecord_from_json_file(
+            self.train_meta_data = generate_tfrecord_from_json_file(
                 input_file_path=self.train_input_file_path,
                 vocab_file_path=self.vocab_file_path,
                 output_file_path=self.train_output_file_path,
                 max_seq_len=self.max_seq_len,
+                is_train=True,
+                return_examples_and_features=False
             )
             with tf.io.gfile.GFile(self.train_output_meta_path, mode='w') as writer:
                 writer.write(json.dumps(self.train_meta_data, ensure_ascii=False, indent=2))
             writer.close()
 
-            self.valid_meta_data = generate_valid_tfrecord_from_json_file(
+            self.valid_meta_data = generate_tfrecord_from_json_file(
                 input_file_path=self.valid_input_file_path,
                 vocab_file_path=self.vocab_file_path,
                 output_file_path=self.valid_output_file_path,
                 max_seq_len=self.max_seq_len,
+                is_train=False,
+                return_examples_and_features=False
             )
             with tf.io.gfile.GFile(self.valid_output_meta_path, mode='w') as writer:
                 writer.write(json.dumps(self.valid_meta_data, ensure_ascii=False, indent=2))
@@ -171,11 +173,11 @@ class BiCLSTaskS1:
         )
 
         train_dataset = train_dataset.map(
-            map_data_to_bi_cls_train_task,
+            map_data_to_bi_cls_task,
             num_parallel_calls=tf.data.experimental.AUTOTUNE
         )
         valid_dataset = valid_dataset.map(
-            map_data_to_bi_cls_train_task,
+            map_data_to_bi_cls_task,
             num_parallel_calls=tf.data.experimental.AUTOTUNE
         )
 
@@ -211,17 +213,17 @@ class BiCLSTaskS1:
 
         callbacks = self._create_callbacks()
 
+        print(model.evaluate(valid_dataset, verbose=0, return_dict=True))
         model.fit(
             train_dataset,
-            initial_epoch=0,
             epochs=self.epochs,
             steps_per_epoch=self.steps_per_epoch,
             callbacks=callbacks,
             verbose=1,
             validation_data=valid_dataset,
             class_weight={
-                '0': 1,
-                '1': 3
+                0: 1,
+                1: 3
             }
         )
 
@@ -326,6 +328,7 @@ class BiCLSTaskS1:
             print(index)
 
         postprocess_output(
+            all_examples=None,
             all_features=valid_features,
             all_results=valid_results,
             threshold=self.predict_threshold,
@@ -418,7 +421,7 @@ class BiCLSTaskS1:
 # Global Variables ############
 
 # task
-TASK_NAME = 'bi_cls'
+TASK_NAME = 'bi_cls_s1'
 
 # raw json
 TRAIN_INPUT_FILE_PATH = 'datasets/raw_datasets/init-train-train.json'

@@ -14,12 +14,12 @@ from sklearn.metrics import precision_recall_fscore_support
 class Example:
     def __init__(
             self,
-            example_index,
+            init_train_example_index,
             text,
             question,
             is_valid
     ):
-        self.example_index = example_index
+        self.init_train_example_index = init_train_example_index
         self.text = text
         self.question = question
         self.is_valid = is_valid
@@ -32,12 +32,14 @@ class Feature:
     def __init__(
             self,
             unique_id,
+            example_index,
             inputs_ids,
             inputs_mask,
             segment_ids,
             is_valid
     ):
         self.unique_id = unique_id
+        self.example_index = example_index
         self.inputs_ids = inputs_ids
         self.inputs_mask = inputs_mask
         self.segment_ids = segment_ids
@@ -54,7 +56,8 @@ class FeatureWriter:
             tf.io.gfile.remove(filename)
 
         # 打开文件
-        self._writer = tf.io.TFRecordWriter(filename)
+        options = tf.io.TFRecordOptions(compression_type='GZIP')
+        self._writer = tf.io.TFRecordWriter(filename, options)
         self.total_features = 0
 
     def process_feature(self, feature):
@@ -150,7 +153,7 @@ def read_train_examples_from_init_train(init_train_path):
 
             # 每个 subject 和其对应的 relation 都有一个正样本
             example = Example(
-                example_index=init_train_example_index,
+                init_train_example_index=init_train_example_index,
                 text=text,
                 question=question,
                 is_valid=1
@@ -165,7 +168,7 @@ def read_train_examples_from_init_train(init_train_path):
             for random_relation in random_relations:
                 question = question_template.replace('subject', s_type).replace('relation', random_relation)
                 example = Example(
-                    example_index=init_train_example_index,
+                    init_train_example_index=init_train_example_index,
                     text=text,
                     question=question,
                     is_valid=0
@@ -186,7 +189,7 @@ def read_train_examples_from_init_train(init_train_path):
                     question = question_template.replace('subject', random_subject)
                     question = question.replace('relation', random_relation)
                     example = Example(
-                        example_index=init_train_example_index,
+                        init_train_example_index=init_train_example_index,
                         text=text,
                         question=question,
                         is_valid=0
@@ -230,7 +233,7 @@ def read_valid_examples_from_init_train(init_train_path):
             # 当前样本拥有的 relation，应预测为 1
             if relation in current_relations:
                 example = Example(
-                    example_index=init_train_example_index,
+                    init_train_example_index=init_train_example_index,
                     text=text,
                     question=question,
                     is_valid=1
@@ -238,7 +241,7 @@ def read_valid_examples_from_init_train(init_train_path):
             else:
                 # 当前样本没有的 relation，应预测为 0
                 example = Example(
-                    example_index=init_train_example_index,
+                    init_train_example_index=init_train_example_index,
                     text=text,
                     question=question,
                     is_valid=0
@@ -262,6 +265,8 @@ def convert_examples_to_features(
     tokenizer.enable_padding(length=max_seq_len)
     tokenizer.enable_truncation(max_length=max_seq_len)
 
+    base_id = 1000000000
+    unique_id = base_id
     for example_index, example in enumerate(examples):
         text = example.text
         question = example.question
@@ -270,68 +275,69 @@ def convert_examples_to_features(
         tokenizer_outputs = tokenizer.encode(question, text)
 
         feature = Feature(
-            unique_id=example_index,
+            unique_id=unique_id,
+            example_index=example_index,
             inputs_ids=tokenizer_outputs.ids,
             inputs_mask=tokenizer_outputs.attention_mask,
             segment_ids=tokenizer_outputs.type_ids,
             is_valid=is_valid
         )
+
+        unique_id += 1
+
         output_fn(feature)
 
 
-def generate_train_tfrecord_from_json_file(
+def generate_tfrecord_from_json_file(
         input_file_path,
         vocab_file_path,
         output_file_path,
-        max_seq_len
-):
-    examples = read_train_examples_from_init_train(
-        init_train_path=input_file_path
-    )
-    writer = FeatureWriter(filename=output_file_path)
-    convert_examples_to_features(
-        examples,
-        vocab_file_path,
         max_seq_len,
-        writer.process_feature
+        is_train,
+        return_examples_and_features
+):
+    if is_train:
+        examples = read_train_examples_from_init_train(
+            init_train_path=input_file_path
+        )
+    else:
+        examples = read_valid_examples_from_init_train(
+            init_train_path=input_file_path
+        )
+
+    writer = FeatureWriter(filename=output_file_path)
+
+    features = []
+
+    def _append_feature(feature):
+        features.append(feature)
+        writer.process_feature(feature)
+
+    if return_examples_and_features:
+        output_fn = _append_feature
+    else:
+        output_fn = writer.process_feature
+
+    convert_examples_to_features(
+        examples=examples,
+        vocab_file_path=vocab_file_path,
+        max_seq_len=max_seq_len,
+        output_fn=output_fn
     )
     meta_data = {
         'data_size': writer.total_features,
         'max_seq_len': max_seq_len
     }
-
     writer.close()
 
-    return meta_data
-
-
-def generate_valid_tfrecord_from_json_file(
-        input_file_path,
-        vocab_file_path,
-        output_file_path,
-        max_seq_len
-):
-    examples = read_valid_examples_from_init_train(
-        init_train_path=input_file_path
-    )
-    writer = FeatureWriter(filename=output_file_path)
-    convert_examples_to_features(
-        examples,
-        vocab_file_path,
-        max_seq_len,
-        writer.process_feature
-    )
-    meta_data = {
-        'data_size': writer.total_features,
-        'max_seq_len': max_seq_len
-    }
-
-    writer.close()
-
-    return meta_data
+    if return_examples_and_features:
+        return meta_data, examples, features
+    else:
+        return meta_data
 
 
 def postprocess_output(
+        all_examples,  # example 保存了原始的数据信息，是推断任务中最重要的数据
         all_features,
         all_results,
         threshold,
