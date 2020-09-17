@@ -271,6 +271,7 @@ class BiCLSTaskS1:
         return callbacks
 
     def predict_train_data(self):
+        self._ensure_dir_exist(self.inference_results_save_dir)
 
         # 以 valid dataset 的形式构建 train dataset
         # 用于 train 最后一个 step
