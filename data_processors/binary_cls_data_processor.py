@@ -39,7 +39,8 @@ class FeatureWriter:
         if tf.io.gfile.exists(filename):
             tf.io.gfile.remove(filename)
 
-        self._writer = tf.io.TFRecordWriter(filename)
+        options = tf.io.TFRecordOptions(compression_type='GZIP')
+        self._writer = tf.io.TFRecordWriter(filename, options=options)
         self.total_features = 0
 
     def process_feature(self, feature):

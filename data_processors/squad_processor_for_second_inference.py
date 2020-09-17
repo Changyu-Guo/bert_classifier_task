@@ -84,8 +84,8 @@ class FeatureWriter(object):
 
         features = collections.OrderedDict()
         features["unique_ids"] = create_int_feature([feature.unique_id])
-        features["input_ids"] = create_int_feature(feature.input_ids)
-        features["input_mask"] = create_int_feature(feature.input_mask)
+        features["inputs_ids"] = create_int_feature(feature.input_ids)
+        features["inputs_mask"] = create_int_feature(feature.input_mask)
         features["segment_ids"] = create_int_feature(feature.segment_ids)
 
         if self.is_training:

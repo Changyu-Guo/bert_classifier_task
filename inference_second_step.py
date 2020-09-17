@@ -23,14 +23,20 @@ MAX_ANSWER_LENGTH = 30
 INFERENCE_MODEL_DIR = 'saved_models/mrc_models/mrc_v2_epochs_3'
 VOCAB_FILE_PATH = 'vocabs/bert-base-chinese-vocab.txt'
 
-second_step_train_save_path = 'datasets/preprocessed_datasets/second_step_train.json'
-second_step_valid_save_path = 'datasets/preprocessed_datasets/second_step_valid.json'
+train_data_before_second_step_save_path = \
+    'datasets/preprocessed_datasets/before_mrc_second_step/in_use/second_step_train' \
+    '.json'
+valid_data_before_second_step_save_path = \
+    'datasets/preprocessed_datasets/before_mrc_second_step/in_use/second_step_valid' \
+    '.json'
 
-second_step_train_tfrecord_save_path = 'datasets/tfrecord_datasets/second_step_train.tfrecord'
-second_step_valid_tfrecord_save_path = 'datasets/tfrecord_datasets/second_step_valid.tfrecord'
+train_tfrecord_before_second_step_save_path = 'datasets/tfrecord_datasets/second_step_train.tfrecord'
+valid_tfrecord_before_second_step_save_path = 'datasets/tfrecord_datasets/second_step_valid.tfrecord'
 
-second_step_inference_train_save_path = 'inference_results/mrc_results/in_use/second_step/train_results.json'
-second_step_inference_valid_save_path = 'inference_results/mrc_results/in_use/second_step/valid_results.json'
+train_data_after_second_step_save_path = \
+    'inference_results/mrc_results/in_use/second_step/train_results.json'
+valid_data_after_second_step_save_path = \
+    'inference_results/mrc_results/in_use/second_step/valid_results.json'
 
 
 def get_raw_results(predictions):
@@ -68,7 +74,7 @@ tokenizer = tokenization.FullTokenizer(
     vocab_file=VOCAB_FILE_PATH, do_lower_case=True
 )
 
-# with tf.io.gfile.GFile(second_step_valid_save_path, mode='r') as reader:
+# with tf.io.gfile.GFile(valid_data_before_second_step_save_path, mode='r') as reader:
 #     input_data = json.load(reader)['data']
 # reader.close()
 #
@@ -77,8 +83,10 @@ tokenizer = tokenization.FullTokenizer(
 #     input_data
 # )
 #
+# print(len(examples))
+#
 # writer = FeatureWriter(
-#     filename=second_step_valid_tfrecord_save_path,
+#     filename=valid_tfrecord_before_second_step_save_path,
 #     is_training=False
 # )
 #
@@ -99,7 +107,7 @@ tokenizer = tokenization.FullTokenizer(
 # writer.close()
 #
 # dataset = read_and_batch_from_squad_tfrecord(
-#     filename=second_step_valid_tfrecord_save_path,
+#     filename=valid_tfrecord_before_second_step_save_path,
 #     max_seq_len=MAX_SEQ_LEN,
 #     is_training=False,
 #     repeat=False,
@@ -107,7 +115,7 @@ tokenizer = tokenization.FullTokenizer(
 # )
 #
 # all_results = []
-# for data in dataset:
+# for index, data in enumerate(dataset):
 #     unique_ids = data.pop('unique_ids')
 #     model_output = model.predict(
 #         map_data_to_mrc_predict_task(data)
@@ -123,6 +131,8 @@ tokenizer = tokenization.FullTokenizer(
 #     )):
 #         all_results.append(result)
 #
+#     print(index)
+#
 # all_predictions = postprocess_output(
 #     input_data,
 #     examples,
@@ -135,7 +145,7 @@ tokenizer = tokenization.FullTokenizer(
 # )
 #
 # for i in range(len(input_data[0]['paragraphs'])):
-#     input_data[0]['paragraphs'][i]['pred_relations'] = []
+#     input_data[0]['paragraphs'][i]['pred_sros'] = []
 #
 # for predict in all_predictions:
 #     context_index = predict['context_index']
@@ -143,7 +153,7 @@ tokenizer = tokenization.FullTokenizer(
 #     relation = predict['relation']
 #     subject = predict['subject']
 #
-#     input_data[0]['paragraphs'][context_index]['pred_relations'].append(
+#     input_data[0]['paragraphs'][context_index]['pred_sros'].append(
 #         {
 #             'relation': relation,
 #             'subject': subject,
@@ -155,21 +165,22 @@ tokenizer = tokenization.FullTokenizer(
 #     'data': input_data
 # }
 #
-# with tf.io.gfile.GFile(second_step_inference_valid_save_path, mode='w') as writer:
+# with tf.io.gfile.GFile(valid_data_after_second_step_save_path, mode='w') as writer:
 #     writer.write(json.dumps(input_data, ensure_ascii=False, indent=2))
 # writer.close()
 
-with tf.io.gfile.GFile(second_step_train_save_path, mode='r') as reader:
+with tf.io.gfile.GFile(train_data_before_second_step_save_path, mode='r') as reader:
     input_data = json.load(reader)['data']
 reader.close()
-
 
 examples = read_squad_examples(
     input_data
 )
 
+print(len(examples))
+
 writer = FeatureWriter(
-    filename=second_step_train_tfrecord_save_path,
+    filename=train_tfrecord_before_second_step_save_path,
     is_training=False
 )
 
@@ -190,7 +201,7 @@ convert_examples_to_features(
 writer.close()
 
 dataset = read_and_batch_from_squad_tfrecord(
-    filename=second_step_train_tfrecord_save_path,
+    filename=train_tfrecord_before_second_step_save_path,
     max_seq_len=MAX_SEQ_LEN,
     is_training=False,
     repeat=False,
@@ -198,7 +209,7 @@ dataset = read_and_batch_from_squad_tfrecord(
 )
 
 all_results = []
-for data in dataset:
+for index, data in enumerate(dataset):
     unique_ids = data.pop('unique_ids')
     model_output = model.predict(
         map_data_to_mrc_predict_task(data)
@@ -208,11 +219,13 @@ for data in dataset:
     end_logits = model_output['end_logits']
 
     for result in get_raw_results(dict(
-        unique_ids=unique_ids,
-        start_logits=start_logits,
-        end_logits=end_logits
+            unique_ids=unique_ids,
+            start_logits=start_logits,
+            end_logits=end_logits
     )):
         all_results.append(result)
+
+    print(index)
 
 all_predictions = postprocess_output(
     input_data,
@@ -226,7 +239,7 @@ all_predictions = postprocess_output(
 )
 
 for i in range(len(input_data[0]['paragraphs'])):
-    input_data[0]['paragraphs'][i]['pred_relations'] = []
+    input_data[0]['paragraphs'][i]['pred_sros'] = []
 
 for predict in all_predictions:
     context_index = predict['context_index']
@@ -234,7 +247,7 @@ for predict in all_predictions:
     relation = predict['relation']
     subject = predict['subject']
 
-    input_data[0]['paragraphs'][context_index]['pred_relations'].append(
+    input_data[0]['paragraphs'][context_index]['pred_sros'].append(
         {
             'relation': relation,
             'subject': subject,
@@ -246,6 +259,6 @@ input_data = {
     'data': input_data
 }
 
-with tf.io.gfile.GFile(second_step_inference_train_save_path, mode='w') as writer:
+with tf.io.gfile.GFile(train_data_after_second_step_save_path, mode='w') as writer:
     writer.write(json.dumps(input_data, ensure_ascii=False, indent=2))
 writer.close()

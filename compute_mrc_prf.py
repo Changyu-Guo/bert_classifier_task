@@ -31,8 +31,8 @@ FPS = []
 FNS = []
 
 for paragraph in paragraphs:
-    origin_relations = paragraph['origin_sros']
-    pred_relations = paragraph['pred_sros']
+    origin_sros = paragraph['origin_sros']
+    pred_sros = paragraph['pred_sros']
 
     all_relation_tuples_set = set()
 
@@ -91,13 +91,13 @@ for paragraph in paragraphs:
     FNS.append(FN)
 
 
-final_precision = sum(precisions) / len(precisions)
-final_recall = sum(recalls) / len(recalls)
-final_f1 = sum(f1s) / len(f1s)
-
-print(final_precision)
-print(final_recall)
-print(final_f1)
+# final_precision = sum(precisions) / len(precisions)
+# final_recall = sum(recalls) / len(recalls)
+# final_f1 = sum(f1s) / len(f1s)
+#
+# print(final_precision)
+# print(final_recall)
+# print(final_f1)
 
 avg_TP = sum(TPS) / len(TPS)
 avg_FP = sum(FPS) / len(FPS)
@@ -107,13 +107,7 @@ avg_precision = avg_TP / (avg_TP + avg_FP)
 avg_recall = avg_TP / (avg_TP + avg_FN)
 avg_f1 = 2 * avg_precision * avg_recall / (avg_precision + avg_recall)
 
-print(avg_precision)
-print(avg_recall)
-print(avg_f1)
+print('precision', avg_precision)
+print('recall', avg_recall)
+print('f1', avg_f1)
 
-
-if __name__ == '__main__':
-    """
-        此文件已经过审查
-    """
-    pass

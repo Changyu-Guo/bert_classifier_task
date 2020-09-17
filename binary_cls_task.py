@@ -207,6 +207,8 @@ class BiCLSTask:
 
         callbacks = self._create_callbacks()
 
+        print(model.evaluate(valid_dataset, verbose=0, return_dict=True))
+
         model.fit(
             train_dataset,
             epochs=self.epochs,
