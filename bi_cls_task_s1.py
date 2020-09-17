@@ -20,7 +20,8 @@ from data_processors.bi_cls_data_processor_s1 import read_valid_examples_from_in
 from data_processors.bi_cls_data_processor_s1 import convert_examples_to_features
 from data_processors.bi_cls_data_processor_s1 import FeatureWriter
 from data_processors.bi_cls_data_processor_s1 import generate_tfrecord_from_json_file
-from data_processors.bi_cls_data_processor_s1 import postprocess_output
+from data_processors.bi_cls_data_processor_s1 import postprocess_valid_output
+from data_processors.bi_cls_data_processor_s1 import postprocess_train_output
 from data_processors.inputs_pipeline import read_and_batch_from_bi_cls_record
 from data_processors.inputs_pipeline import map_data_to_bi_cls_task
 
@@ -269,35 +270,26 @@ class BiCLSTaskS1:
 
         return callbacks
 
-    def predict_valid_data(self):
+    def predict_train_data(self):
 
-        valid_examples = read_valid_examples_from_init_train(self.valid_input_file_path)
-        valid_writer = FeatureWriter(
-            filename=self.predict_valid_output_file_path
-        )
-        valid_features = []
-
-        def _append_feature(feature):
-            valid_features.append(feature)
-            valid_writer.process_feature(feature)
-
-        convert_examples_to_features(
-            examples=valid_examples,
+        # 以 valid dataset 的形式构建 train dataset
+        # 用于 train 最后一个 step
+        generate_tfrecord_from_json_file(
+            input_file_path=self.train_input_file_path,
             vocab_file_path=self.vocab_file_path,
+            output_file_path=self.predict_train_output_file_path,
             max_seq_len=self.max_seq_len,
-            output_fn=_append_feature
+            is_train=False,
+            return_examples_and_features=True
         )
 
-        valid_writer.close()
-
-        valid_dataset = read_and_batch_from_bi_cls_record(
-            filename=self.predict_valid_output_file_path,
+        dataset = read_and_batch_from_bi_cls_record(
+            filename=self.predict_train_output_file_path,
             max_seq_len=self.max_seq_len,
             repeat=False,
             shuffle=False,
             batch_size=self.predict_batch_size
         )
-        valid_results = []
 
         with get_strategy_scope(self.distribution_strategy):
             model = create_binary_cls_model(
@@ -316,28 +308,44 @@ class BiCLSTaskS1:
                 )
             ))
 
-        for index, data in enumerate(valid_dataset):
-            unique_ids = data.pop('unique_ids')
-            model_output = model.predict(
-                map_data_to_bi_cls_predict_task(data)
-            )
-            batch_probs = model_output['probs']
-            for result in self.generate_predict_item(unique_ids, batch_probs):
-                valid_results.append(result)
+        origin_is_valid = []
+        pred_is_valid = []
+        batched_origin_is_valid = []
+        batched_pred_is_valid = []
+
+        for index, data in enumerate(dataset):
+            x, y = map_data_to_bi_cls_task(data)
+
+            batch_probs = model.predict(x)
+
+            batch_probs = tf.where(batch_probs > self.predict_threshold, 1, 0)
+
+            batch_probs = batch_probs.numpy().flatten().tolist()
+
+            origin_is_valid.extend(y.numpy().tolist())
+            pred_is_valid.extend(batch_probs)
 
             print(index)
 
-        postprocess_output(
-            all_examples=None,
-            all_features=valid_features,
-            all_results=valid_results,
-            threshold=self.predict_threshold,
-            results_save_path=os.path.join(self.inference_results_save_dir, 'valid_results.json')
+        def chunks(ls, n):
+            for i in range(0, len(ls), n):
+                yield ls[i: i + n]
+
+        for chunk in chunks(origin_is_valid, 53):
+            batched_origin_is_valid.append(chunk)
+
+        for chunk in chunks(pred_is_valid, 53):
+            batched_pred_is_valid.append(chunk)
+
+        postprocess_train_output(
+            batched_origin_is_valid=batched_origin_is_valid,
+            batched_pred_is_valid=batched_pred_is_valid,
+            results_save_path=os.path.join(self.inference_results_save_dir, 'train_results.json')
         )
 
-    def predict_valid_data_2(self):
+    def predict_valid_data(self):
 
-        valid_dataset = read_and_batch_from_bi_cls_record(
+        dataset = read_and_batch_from_bi_cls_record(
             filename=self.predict_valid_output_file_path,
             max_seq_len=self.max_seq_len,
             repeat=False,
@@ -366,18 +374,17 @@ class BiCLSTaskS1:
         pred_is_valid = []
         batched_origin_is_valid = []
         batched_pred_is_valid = []
-        for index, data in enumerate(valid_dataset):
-            x, y = map_data_to_bi_cls_train_task(data)
 
-            model_output = model.predict(x)
+        for index, data in enumerate(dataset):
+            x, y = map_data_to_bi_cls_task(data)
 
-            batch_probs = model_output['probs']
+            batch_probs = model.predict(x)
 
             batch_probs = tf.where(batch_probs > self.predict_threshold, 1, 0)
 
             batch_probs = batch_probs.numpy().flatten().tolist()
 
-            origin_is_valid.extend(y['probs'].numpy().tolist())
+            origin_is_valid.extend(y.numpy().tolist())
             pred_is_valid.extend(batch_probs)
 
             print(index)
@@ -392,30 +399,11 @@ class BiCLSTaskS1:
         for chunk in chunks(pred_is_valid, 53):
             batched_pred_is_valid.append(chunk)
 
-        precision, recall, f1, _ = precision_recall_fscore_support(
-            batched_origin_is_valid, batched_pred_is_valid, average='micro'
+        postprocess_valid_output(
+            batched_origin_is_valid=batched_origin_is_valid,
+            batched_pred_is_valid=batched_pred_is_valid,
+            results_save_path=os.path.join(self.inference_results_save_dir, 'valid_results.json')
         )
-        print(precision)
-        print(recall)
-        print(f1)
-        precision, recall, f1, _ = precision_recall_fscore_support(
-            batched_origin_is_valid, batched_pred_is_valid, average='macro'
-        )
-        print(precision)
-        print(recall)
-        print(f1)
-
-    def generate_predict_item(self, unique_ids, batch_probs):
-        RawResult = collections.namedtuple(
-            'RawResult',
-            ['unique_id', 'probs']
-        )
-
-        for unique_id, probs in zip(unique_ids, batch_probs):
-            yield RawResult(
-                unique_id=unique_id.numpy(),
-                probs=probs
-            )
 
 
 # Global Variables ############
@@ -461,7 +449,7 @@ def get_model_params():
         lambda: None,
         task_name=TASK_NAME,
         distribution_strategy='one_device',
-        epochs=8,
+        epochs=4,
         predict_batch_size=PREDICT_BATCH_SIZE,
         model_save_dir=MODEL_SAVE_DIR,
         train_input_file_path=TRAIN_INPUT_FILE_PATH,
@@ -493,11 +481,11 @@ def bi_cls_s1_main():
         use_pretrain=True,
         use_prev_record=True,
         batch_size=48,
-        inference_model_dir='saved_models/bi_cls_s1_models'
+        inference_model_dir='gs://leeyu-dataset-public'
     )
     return task
 
 
 if __name__ == '__main__':
     task = bi_cls_s1_main()
-    task.train()
+    task.predict_train_data()

@@ -601,6 +601,7 @@ def postprocess_output(
         pred_answer = nbest_json[0]['text']
         relation = example.relation
 
+        # 第二次 inference 需要计算出 object，并顺便输出 subject
         item = {
             'context_index': input_data_index,
             'pred_answer': pred_answer,

@@ -4,7 +4,7 @@ import json
 import collections
 import tensorflow as tf
 from tokenizers import BertWordPieceTokenizer
-from data_processors.mrc_data_processor import extract_examples_from_relation_questions
+from data_processors.commom import extract_examples_dict_from_relation_questions
 
 
 class BiCLSExample:
@@ -24,6 +24,8 @@ class BiCLSFeature:
             segment_ids,
             is_valid
     ):
+        self.unique_id = unique_id
+        self.example_index = example_index
         self.inputs_ids = inputs_ids
         self.inputs_mask = inputs_mask
         self.segment_ids = segment_ids
@@ -33,8 +35,10 @@ class BiCLSFeature:
 class FeatureWriter:
     def __init__(self, filename):
         self.filename = filename
+
         if tf.io.gfile.exists(filename):
             tf.io.gfile.remove(filename)
+
         self._writer = tf.io.TFRecordWriter(filename)
         self.total_features = 0
 
@@ -62,7 +66,7 @@ class FeatureWriter:
 
 
 def read_examples_from_mrc_inference_results(filepath):
-    relation_questions_dict = extract_examples_from_relation_questions()
+    relation_questions_dict = extract_examples_dict_from_relation_questions()
     with tf.io.gfile.GFile(filepath, mode='r') as reader:
         input_data = json.load(reader)['data'][0]
 
@@ -71,43 +75,46 @@ def read_examples_from_mrc_inference_results(filepath):
 
     for paragraph in paragraphs:
         context = paragraph['context']
-        origin_relations = paragraph['origin_relations']
-        pred_relations = paragraph['pred_relations']
+        origin_sros = paragraph['origin_sros']
+        pred_sros = paragraph['pred_sros']
         origin_three_tuples = []
 
-        for relation in origin_relations:
-            _relation = relation['relation']
-            _subject = relation['subject']
-            _object = relation['object']
+        # 构造正样本
+        for sro in origin_sros:
+            _relation = sro['relation']
+            _subject = sro['subject']
+            _object = sro['object']
             origin_three_tuples.append(_subject + _relation + _object)
 
             relation_questions = relation_questions_dict[_relation]
-            relation_question_c = relation_questions.relation_question_c
-            relation_question_c = relation_question_c.replace('subject', _subject).replace('object', _object)
+            question_c = relation_questions.question_c
+            question_c = question_c.replace('subject', _subject).replace('object', _object)
 
             example = BiCLSExample(
                 text=context,
-                question=relation_question_c,
+                question=question_c,
                 is_valid=1
             )
             examples.append(example)
 
-        for relation in pred_relations:
-            _relation = relation['relation']
-            _subject = relation['subject']
-            _object = relation['object']
+        # 构造负样本
+        for sro in pred_sros:
+            _relation = sro['relation']
+            _subject = sro['subject']
+            _object = sro['object']
 
             three_tuple = _subject + _relation + _object
+            # 如果当前样本预测正确，则不构造当前样本为负样本
             if three_tuple in origin_three_tuples:
                 continue
 
             relation_questions = relation_questions_dict[_relation]
-            relation_question_c = relation_questions.relation_question_c
-            relation_question_c = relation_question_c.replace('subject', _subject).replace('object', _object)
+            question_c = relation_questions.question_c
+            question_c = question_c.replace('subject', _subject).replace('object', _object)
 
             example = BiCLSExample(
                 text=context,
-                question=relation_question_c,
+                question=question_c,
                 is_valid=0
             )
             examples.append(example)
@@ -122,6 +129,8 @@ def convert_examples_to_features(
     tokenizer.enable_padding(length=max_seq_len)
     tokenizer.enable_truncation(max_seq_len)
 
+    base_id = 1000000000
+    unique_id = base_id
     for example_index, example in enumerate(examples):
         text = example.text
         question = example.question
@@ -130,11 +139,16 @@ def convert_examples_to_features(
         tokenizer_outputs = tokenizer.encode(question, text)
 
         feature = BiCLSFeature(
+            unique_id=unique_id,
+            example_index=example_index,
             inputs_ids=tokenizer_outputs.ids,
             inputs_mask=tokenizer_outputs.attention_mask,
             segment_ids=tokenizer_outputs.type_ids,
             is_valid=is_valid
         )
+
+        unique_id += 1
+
         output_fn(feature)
 
 
@@ -164,4 +178,7 @@ def generate_tfrecord_from_json_file(
 
 
 if __name__ == '__main__':
+    """
+        该文件已经过审查
+    """
     pass

@@ -19,10 +19,10 @@ from data_processors.binary_cls_data_processor import generate_tfrecord_from_jso
 from data_processors.binary_cls_data_processor import FeatureWriter
 from data_processors.binary_cls_data_processor import convert_examples_to_features
 from data_processors.inputs_pipeline import read_and_batch_from_bi_cls_record
-from data_processors.inputs_pipeline import map_data_to_bi_cls_train_task
+from data_processors.inputs_pipeline import map_data_to_bi_cls_task
 
 
-class MRCTask:
+class BiCLSTask:
 
     def __init__(
             self,
@@ -49,6 +49,7 @@ class MRCTask:
         self.valid_input_file_path = kwargs['valid_input_file_path']
         self.train_output_file_path = kwargs['train_output_file_path']
         self.valid_output_file_path = kwargs['valid_output_file_path']
+        self.predict_train_output_file_path = kwargs['predict_train_output_file_path']
         self.predict_valid_output_file_path = kwargs['predict_valid_output_file_path']
         self.train_output_meta_path = kwargs['train_output_meta_path']
         self.valid_output_meta_path = kwargs['valid_output_meta_path']
@@ -84,6 +85,7 @@ class MRCTask:
         # inference
         self.inference_results_save_dir = kwargs['inference_results_save_dir']
         self.predict_batch_size = kwargs['predict_batch_size']
+        self.predict_threshold = kwargs['predict_threshold']
 
         # 如果使用之前生成的 tfrecord 文件，则必须有：
         # 1. tfrecord 文件本身
@@ -108,7 +110,7 @@ class MRCTask:
         self._ensure_dir_exist(self.model_save_dir)
         self._ensure_dir_exist(self.tensorboard_log_dir)
 
-        # convert examples to tfrecord or load
+        # 读取 meta 信息
         if self.use_prev_record:
 
             with tf.io.gfile.GFile(self.train_output_meta_path, mode='r') as reader:
@@ -121,6 +123,7 @@ class MRCTask:
 
         else:
 
+            # 生成 TFRecord 并存储 meta 信息
             self.train_meta_data = generate_tfrecord_from_json_file(
                 input_file_path=self.train_input_file_path,
                 vocab_file_path=self.vocab_file_path,
@@ -164,11 +167,11 @@ class MRCTask:
         )
 
         train_dataset = train_dataset.map(
-            map_data_to_bi_cls_train_task,
+            map_data_to_bi_cls_task,
             num_parallel_calls=tf.data.experimental.AUTOTUNE
         )
         valid_dataset = valid_dataset.map(
-            map_data_to_bi_cls_train_task,
+            map_data_to_bi_cls_task,
             num_parallel_calls=tf.data.experimental.AUTOTUNE
         )
 
@@ -206,7 +209,6 @@ class MRCTask:
 
         model.fit(
             train_dataset,
-            initial_epoch=0,
             epochs=self.epochs,
             steps_per_epoch=self.steps_per_epoch,
             callbacks=callbacks,
@@ -256,35 +258,23 @@ class MRCTask:
 
         return callbacks
 
-    def predict_file(self, file_path, output_path):
-        with get_strategy_scope(self.distribution_strategy):
-            model = create_binary_cls_model(
-                is_train=False,
-                use_pretrain=False
-            )
-            checkpoint = tf.train.Checkpoint(model=model)
-            checkpoint.restore(
-                tf.train.latest_checkpoint(
-                    self.inference_model_dir
-                )
-            )
-            logging.info('Restore checkpoint from {}'.format(
-                tf.train.latest_checkpoint(self.inference_model_dir)
-            ))
-
 
 # Global Variables ############
 
 # task
-TASK_NAME = 'bi_cls'
+TASK_NAME = 'bi_cls_s3'
 
-# raw json
-BI_CLS_TRAIN_INPUT_FILE_PATH = 'inference_results/mrc_results/in_use/second_step/train_results.json'
-BI_CLS_VALID_INPUT_FILE_PATH = 'inference_results/mrc_results/in_use/second_step/valid_results.json'
+# 第三步的输入是 <阅读理解> 第二步的推断结果
+TRAIN_INPUT_FILE_PATH = 'inference_results/mrc_results/in_use/second_step/train_results.json'
+VALID_INPUT_FILE_PATH = 'inference_results/mrc_results/in_use/second_step/valid_results.json'
 
 # tfrecord
+# 一般情况下不需要管文件夹中原来得 TFRecord
+# 因为重新生成浪费的时间也不多
 TRAIN_OUTPUT_FILE_PATH = 'datasets/tfrecord_datasets/bi_cls_train.tfrecord'
 VALID_OUTPUT_FILE_PATH = 'datasets/tfrecord_datasets/bi_cls_valid.tfrecord'
+PREDICT_TRAIN_OUTPUT_FILE_PATH = 'datasets/tfrecord_datasets/bi_cls_predict_train.tfrecord'
+PREDICT_VALID_OUTPUT_FILE_PATH = 'datasets/tfrecord_datasets/bi_cls_predict_valid.tfrecord'
 
 # tfrecord meta data
 TRAIN_OUTPUT_META_PATH = 'datasets/tfrecord_datasets/bi_cls_train_meta.json'
@@ -299,13 +289,14 @@ VOCAB_FILE_PATH = 'vocabs/bert-base-chinese-vocab.txt'
 
 # dataset process relate
 MAX_SEQ_LEN = 165
-PREDICT_BATCH_SIZE = 128
+PREDICT_BATCH_SIZE = 10000
+PREDICT_THRESHOLD = 0.5
 
 # train relate
-LEARNING_RATE = 1e-5
+LEARNING_RATE = 3e-5
 
 # inference relate
-INFERENCE_RESULTS_SAVE_DIR = 'inference_results/mrc_results'
+INFERENCE_RESULTS_SAVE_DIR = 'inference_results/bi_cls_results'
 
 
 def get_model_params():
@@ -313,13 +304,14 @@ def get_model_params():
         lambda: None,
         task_name=TASK_NAME,
         distribution_strategy='one_device',
-        epochs=5,
+        epochs=4,  # 使用 Bert 最佳的训练 Epochs 为 3 ~ 5 步，不然会过拟合
         predict_batch_size=PREDICT_BATCH_SIZE,
         model_save_dir=MODEL_SAVE_DIR,
-        train_input_file_path=BI_CLS_TRAIN_INPUT_FILE_PATH,
-        valid_input_file_path=BI_CLS_VALID_INPUT_FILE_PATH,
+        train_input_file_path=TRAIN_INPUT_FILE_PATH,
+        valid_input_file_path=VALID_INPUT_FILE_PATH,
         train_output_file_path=TRAIN_OUTPUT_FILE_PATH,
         valid_output_file_path=VALID_OUTPUT_FILE_PATH,
+        predict_train_output_file_path=PREDICT_TRAIN_OUTPUT_FILE_PATH,
         predict_valid_output_file_path=PREDICT_VALID_OUTPUT_FILE_PATH,
         train_output_meta_path=TRAIN_OUTPUT_META_PATH,
         valid_output_meta_path=VALID_OUTPUT_META_PATH,
@@ -332,23 +324,30 @@ def get_model_params():
         enable_checkpointing=False,  # Notice 开启此选项可能会存储大量的 Checkpoint ####
         enable_tensorboard=True,
         tensorboard_log_dir=TENSORBOARD_LOG_DIR,
-        inference_results_save_dir=INFERENCE_RESULTS_SAVE_DIR
+        inference_results_save_dir=INFERENCE_RESULTS_SAVE_DIR,
+        predict_threshold=PREDICT_THRESHOLD
     )
 
 
 def bi_cls_main():
+    """
+        用于训练最后一个步骤的模型
+        该模型用于过滤掉错误的答案
+    """
     logging.set_verbosity(logging.INFO)
-    task = MRCTask(
+    task = BiCLSTask(
         get_model_params(),
         use_pretrain=True,
         use_prev_record=True,
         batch_size=48,
-        inference_model_dir='saved_models/mrc_models/mrc_v3_epochs_10'
+        inference_model_dir='saved_models/binary_cls_models'
     )
     return task
 
 
 if __name__ == '__main__':
+    """
+        当前文件已经过审查
+    """
     task = bi_cls_main()
     task.train()
-

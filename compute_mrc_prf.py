@@ -31,20 +31,20 @@ FPS = []
 FNS = []
 
 for paragraph in paragraphs:
-    origin_relations = paragraph['origin_relations']
-    pred_relations = paragraph['pred_relations']
+    origin_relations = paragraph['origin_sros']
+    pred_relations = paragraph['pred_sros']
 
     all_relation_tuples_set = set()
 
     origin_relation_tuples = []
-    for origin_relation in origin_relations:
-        relation_tuple = origin_relation['subject'] + origin_relation['relation'] + origin_relation['object']
+    for origin_sro in origin_sros:
+        relation_tuple = origin_sro['subject'] + origin_sro['relation'] + origin_sro['object']
         origin_relation_tuples.append(relation_tuple)
         all_relation_tuples_set.add(relation_tuple)
 
     pred_relation_tuples = []
-    for pred_relation in pred_relations:
-        relation_tuple = pred_relation['subject'] + pred_relation['relation'] + pred_relation['object']
+    for pred_sro in pred_sros:
+        relation_tuple = pred_sro['subject'] + pred_sro['relation'] + pred_sro['object']
         pred_relation_tuples.append(relation_tuple)
         all_relation_tuples_set.add(relation_tuple)
 
@@ -110,3 +110,10 @@ avg_f1 = 2 * avg_precision * avg_recall / (avg_precision + avg_recall)
 print(avg_precision)
 print(avg_recall)
 print(avg_f1)
+
+
+if __name__ == '__main__':
+    """
+        此文件已经过审查
+    """
+    pass

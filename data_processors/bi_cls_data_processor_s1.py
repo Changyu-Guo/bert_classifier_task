@@ -5,6 +5,7 @@ import random
 import collections
 import tensorflow as tf
 from tokenizers import BertWordPieceTokenizer
+from data_processors.commom import read_init_train_valid_examples
 from data_processors.commom import extract_relations_from_init_train_table
 from sklearn.metrics import precision_recall_fscore_support
 
@@ -336,42 +337,89 @@ def generate_tfrecord_from_json_file(
         return meta_data
 
 
-def postprocess_output(
-        all_examples,  # example 保存了原始的数据信息，是推断任务中最重要的数据
-        all_features,
-        all_results,
-        threshold,
+def postprocess_valid_output(
+        batched_origin_is_valid,
+        batched_pred_is_valid,
         results_save_path
 ):
-    # 一个 feature 拥有一个 unique id
-    # 定义一个根据 unique id 找到其结果的映射
-    unique_id_to_result = {}
-    for result in all_results:
-        unique_id_to_result[result.unique_id] = result
-
-    all_origin_is_valid = []
-    all_pred_is_valid = []
-    for feature in all_features:
-        unique_id = feature.unique_id
-        origin_is_valid = feature.is_valid
-
-        # 每一个 feature 一个 result
-        feature_result = unique_id_to_result[unique_id]
-        pred_probs = feature_result.probs
-
-        # return a Tensor
-        if pred_probs >= threshold:
-            pred_is_valid = 1
-        else:
-            pred_is_valid = 0
-
-        all_origin_is_valid.append(origin_is_valid)
-        all_pred_is_valid.append(pred_is_valid)
-
     precision, recall, f1, _ = precision_recall_fscore_support(
-        all_origin_is_valid, all_pred_is_valid, average='binary'
+        batched_origin_is_valid, batched_pred_is_valid, average='micro'
     )
+    print(precision)
+    print(recall)
+    print(f1)
 
-    print('precision', precision)
-    print('recall', recall)
-    print('f1-score', f1)
+    # origin valid data
+    init_train_examples = read_init_train_valid_examples('datasets/raw_datasets/init-train-valid.json')
+    _, relations, _, _ = extract_relations_from_init_train_table()
+
+    # 每一条 example 都对应一个原始的 init train example
+    for example_index, example in enumerate(init_train_examples):
+
+        # 当前 example / feature 对应的原始 valid data index
+        init_train_example_index = example_index
+
+        # 构建 pred_sros 键
+        if not init_train_examples[init_train_example_index].get('pred_sros'):
+            init_train_examples[init_train_example_index]['pred_sros'] = []
+
+        # 获取当前 init train example 对应的一组推断结果
+        current_pred_indices = batched_pred_is_valid[init_train_example_index]
+
+        # 将 53 个预测结果对应到 relation
+        # 然后添加到对应的 init train example 中
+        for i in range(len(current_pred_indices)):
+            if current_pred_indices[i] == 1:
+                init_train_examples[init_train_example_index]['pred_sros'].append(
+                    {
+                        'relation': relations[i]
+                    }
+                )
+
+    with tf.io.gfile.GFile(results_save_path, mode='w') as writer:
+        writer.write(json.dumps(init_train_examples, ensure_ascii=False, indent=2))
+    writer.close()
+
+
+def postprocess_train_output(
+        batched_origin_is_valid,
+        batched_pred_is_valid,
+        results_save_path
+):
+    precision, recall, f1, _ = precision_recall_fscore_support(
+        batched_origin_is_valid, batched_pred_is_valid, average='micro'
+    )
+    print(precision)
+    print(recall)
+    print(f1)
+
+    # origin valid data
+    init_train_examples = read_init_train_valid_examples('datasets/raw_datasets/init-train-train.json')
+    _, relations, _, _ = extract_relations_from_init_train_table()
+
+    # 每一条 example 都对应一个原始的 init train example
+    for example_index, example in enumerate(init_train_examples):
+
+        # 当前 example / feature 对应的原始 valid data index
+        init_train_example_index = example_index
+
+        # 构建 pred_sros 键
+        if not init_train_examples[init_train_example_index].get('pred_sros'):
+            init_train_examples[init_train_example_index]['pred_sros'] = []
+
+        # 获取当前 init train example 对应的一组推断结果
+        current_pred_indices = batched_pred_is_valid[init_train_example_index]
+
+        # 将 53 个预测结果对应到 relation
+        # 然后添加到对应的 init train example 中
+        for i in range(len(current_pred_indices)):
+            if current_pred_indices[i] == 1:
+                init_train_examples[init_train_example_index]['pred_sros'].append(
+                    {
+                        'relation': relations[i]
+                    }
+                )
+
+    with tf.io.gfile.GFile(results_save_path, mode='w') as writer:
+        writer.write(json.dumps(init_train_examples, ensure_ascii=False, indent=2))
+    writer.close()

@@ -475,6 +475,9 @@ def postprocess_output(
     all_predictions = []
     all_nbest_json = collections.OrderedDict()
 
+    # 这里遍历了所有的 example
+    # 一个 example 对应着一个 question
+    # 只能有一个答案
     for (example_index, example) in enumerate(all_examples):
         features = example_index_to_features[example_index]
 
@@ -587,17 +590,11 @@ def postprocess_output(
 
         assert len(nbest_json) >= 1
 
-        # TODO 此处只输出了预测答案，应在此处加上 原始文章、原始问题、原始答案
-        # pred_dict_item = {
-        #     "origin_text_tokens": example.doc_tokens,
-        #     "question": example.question_text,
-        #     "correct_answer": example.orig_answer_text,
-        #     "pred_answer": nbest_json[0]['text']
-        # }
         input_data_index = example.context_index
         pred_answer = nbest_json[0]['text']
         relation = example.relation
 
+        # 第一步 inference 只需要预测出 subject
         item = {
             'context_index': input_data_index,
             'pred_answer': pred_answer,

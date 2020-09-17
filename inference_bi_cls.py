@@ -4,7 +4,7 @@ import json
 import tensorflow as tf
 from tokenizers import BertWordPieceTokenizer
 from create_models import create_binary_cls_model
-from data_processors.mrc_data_processor import extract_examples_from_relation_questions
+from data_processors.commom import extract_examples_dict_from_relation_questions
 
 model = create_binary_cls_model(is_train=False, use_pretrain=False)
 
@@ -13,6 +13,7 @@ checkpoint.restore(tf.train.latest_checkpoint(
     checkpoint_dir='saved_models/binary_cls_models'
 ))
 
+# 对 <阅读理解> 第二步推断出的结果进行预测（过滤掉非法结果）
 valid_data_path = 'inference_results/mrc_results/in_use/second_step/valid_results.json'
 
 with tf.io.gfile.GFile(valid_data_path, mode='r') as reader:
@@ -21,28 +22,28 @@ reader.close()
 
 MAX_SEQ_LEN = 165
 paragraphs = valid_data['data'][0]['paragraphs']
-relation_questions_dict = extract_examples_from_relation_questions()
+relation_questions_dict = extract_examples_dict_from_relation_questions()
 tokenizer = BertWordPieceTokenizer(vocab_file='vocabs/bert-base-chinese-vocab.txt')
 tokenizer.enable_padding(length=MAX_SEQ_LEN)
 tokenizer.enable_truncation(max_length=MAX_SEQ_LEN)
 
 for paragraph in paragraphs:
     context = paragraph['context']
-    pred_relations = paragraph['pred_relations']
+    pred_sros = paragraph['pred_sros']
 
     filtered_relations = []
-    for relation in pred_relations:
-        _relation = relation['relation']
-        _subject = relation['subject']
-        _object = relation['object']
+    for sro in pred_sros:
+        _relation = sro['relation']
+        _subject = sro['subject']
+        _object = sro['object']
 
         relation_questions = relation_questions_dict[_relation]
 
-        relation_question_c = relation_questions.relation_question_c
+        question_c = relation_questions.question_c
 
-        relation_question_c = relation_question_c.replace('subject', _subject).replace('object', _object)
+        question_c = question_c.replace('subject', _subject).replace('object', _object)
 
-        tokenizer_output = tokenizer.encode(relation_question_c, context)
+        tokenizer_output = tokenizer.encode(question_c, context)
 
         inputs_ids = tokenizer_output.ids
         inputs_mask = tokenizer_output.attention_mask
@@ -52,9 +53,10 @@ for paragraph in paragraphs:
         inputs_mask = tf.reshape(tf.constant(inputs_mask), (1, -1))
         segment_ids = tf.reshape(tf.constant(segment_ids), (1, -1))
 
+        # 推断一个结果
         model_output = model.predict({
-            'input_ids': inputs_ids,
-            'input_mask': inputs_mask,
+            'inputs_ids': inputs_ids,
+            'inputs_mask': inputs_mask,
             'segment_ids': segment_ids
         })
 
@@ -67,7 +69,7 @@ for paragraph in paragraphs:
                 'object': _object
             })
 
-    paragraph['pred_relations'] = filtered_relations
+    paragraph['pred_sros'] = filtered_relations
 
 
 results = {
@@ -77,3 +79,10 @@ output_save_path = 'inference_results/bi_cls_results/valid_results.json'
 with tf.io.gfile.GFile(output_save_path, mode='w') as writer:
     writer.write(json.dumps(results, ensure_ascii=False, indent=2))
 writer.close()
+
+
+if __name__ == '__main__':
+    """
+        此文件已经过审查，应注意路径问题
+    """
+    pass

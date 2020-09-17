@@ -5,6 +5,9 @@ from data_processors import bi_cls_data_processor_s1
 from data_processors import commom
 
 if __name__ == '__main__':
-    bi_cls_data_processor_s1.read_valid_examples_from_init_train(
-        'datasets/raw_datasets/init-train-valid.json'
+    bi_cls_data_processor_s1.postprocess_valid_output(
+        all_examples=None,
+        batched_origin_is_valid=None,
+        batched_pred_is_valid=None,
+        results_save_path=None
     )
