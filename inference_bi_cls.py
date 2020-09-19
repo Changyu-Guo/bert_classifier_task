@@ -3,15 +3,21 @@
 import json
 import tensorflow as tf
 from tokenizers import BertWordPieceTokenizer
+from utils.distribu_utils import get_distribution_strategy
+from utils.distribu_utils import get_strategy_scope
 from create_models import create_binary_cls_model
 from data_processors.commom import extract_examples_dict_from_relation_questions
 
-model = create_binary_cls_model(is_train=False, use_pretrain=False)
+distribution_strategy = get_distribution_strategy('one_device')
 
-checkpoint = tf.train.Checkpoint(model=model)
-checkpoint.restore(tf.train.latest_checkpoint(
-    checkpoint_dir='saved_models/binary_cls_models'
-))
+with get_strategy_scope(distribution_strategy):
+
+    model = create_binary_cls_model(is_train=False, use_pretrain=False)
+
+    checkpoint = tf.train.Checkpoint(model=model)
+    checkpoint.restore(tf.train.latest_checkpoint(
+        checkpoint_dir='saved_models/binary_cls_models'
+    ))
 
 # 对 <阅读理解> 第二步推断出的结果进行预测（过滤掉非法结果）
 valid_data_path = 'inference_results/mrc_results/in_use/second_step/valid_results.json'
@@ -27,7 +33,9 @@ tokenizer = BertWordPieceTokenizer(vocab_file='vocabs/bert-base-chinese-vocab.tx
 tokenizer.enable_padding(length=MAX_SEQ_LEN)
 tokenizer.enable_truncation(max_length=MAX_SEQ_LEN)
 
-for paragraph in paragraphs:
+print(len(paragraphs))
+
+for index, paragraph in enumerate(paragraphs):
     context = paragraph['context']
     pred_sros = paragraph['pred_sros']
 
@@ -60,9 +68,9 @@ for paragraph in paragraphs:
             'segment_ids': segment_ids
         })
 
-        prob = model_output['prob'][0][0]
+        prob = model_output[0][0]
 
-        if prob >= 0.5:
+        if prob >= 0.3:
             filtered_relations.append({
                 'relation': _relation,
                 'subject': _subject,
@@ -70,6 +78,7 @@ for paragraph in paragraphs:
             })
 
     paragraph['pred_sros'] = filtered_relations
+    print(index)
 
 
 results = {
@@ -80,9 +89,3 @@ with tf.io.gfile.GFile(output_save_path, mode='w') as writer:
     writer.write(json.dumps(results, ensure_ascii=False, indent=2))
 writer.close()
 
-
-if __name__ == '__main__':
-    """
-        此文件已经过审查，应注意路径问题
-    """
-    pass

@@ -1,0 +1,52 @@
+第一个 Step 是关系抽取，目前使用的方法：
+    1. Multi Label Classification
+    2. Multi Turn Question Answering
+无论使用哪种方法，inference 的结果都应该是如下格式：
+[
+    {
+        'text': '......',
+        'origin_sros': [
+            {
+                'relation': '......',
+                'subject': '......',
+                'object': '......'
+            }
+        ],
+        'pred_sros': [
+            {
+                'relation': '......'
+                // 注意，由于第一步模型只抽取 relation，因此现在的 pred_sros 只包含 relation
+            }
+        ]
+    }
+]
+
+
+===============================================================================
+
+
+第二个 Step 是阅读理解，目前使用的方法：
+    1. Bert QA
+该 Step 分为两个步骤：
+    1. Step 2.1: 抽取 subject
+    2. Step 2.2: 抽取 object
+
+Step 2.1 的 inference 的结果是：
+[
+    {
+        'text': '......',
+        'origin_sros': [
+            {
+                'relation': '......',
+                'subject': '......',
+                'object': '......'
+            }
+        ],
+        'pred_sros': [
+            {
+                'relation': '......'
+                // 注意，由于第一步模型只抽取 relation，因此现在的 pred_sros 只包含 relation
+            }
+        ]
+    }
+]

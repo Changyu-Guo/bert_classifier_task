@@ -339,8 +339,8 @@ def bi_cls_main():
     logging.set_verbosity(logging.INFO)
     task = BiCLSTask(
         get_model_params(),
-        use_pretrain=True,
-        use_prev_record=True,
+        use_pretrain=False,
+        use_prev_record=False,
         batch_size=48,
         inference_model_dir='saved_models/binary_cls_models'
     )

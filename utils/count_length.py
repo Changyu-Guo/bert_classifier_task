@@ -5,7 +5,7 @@ import tensorflow as tf
 from tokenizers import BertWordPieceTokenizer
 from data_processors.multi_label_cls_data_processor import extract_examples_from_init_train
 
-tokenizer = BertWordPieceTokenizer('vocabs/bert-base-chinese-vocab.txt')
+tokenizer = BertWordPieceTokenizer('../vocabs/bert-base-chinese-vocab.txt')
 
 
 def count_text_len():

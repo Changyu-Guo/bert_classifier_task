@@ -120,6 +120,8 @@ def read_examples_from_mrc_inference_results(filepath):
             )
             examples.append(example)
 
+    print(len(examples))
+
     return examples
 
 

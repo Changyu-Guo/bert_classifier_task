@@ -26,7 +26,7 @@ from data_processors.inputs_pipeline import read_and_batch_from_bi_cls_record
 from data_processors.inputs_pipeline import map_data_to_bi_cls_task
 
 
-class BiCLSTaskS1:
+class MultiTurnMRCCLSTask:
 
     def __init__(
             self,
@@ -409,14 +409,15 @@ class BiCLSTaskS1:
 
 # Global Variables ############
 
-# task
-TASK_NAME = 'bi_cls_s1'
+# 任务名称
+TASK_NAME = 'multi_turn_mrc_cls_task'
 
-# raw json
+# 原始数据加载路径
+# 当前任务的原始数据应该是 init-train
 TRAIN_INPUT_FILE_PATH = 'datasets/raw_datasets/init-train-train.json'
 VALID_INPUT_FILE_PATH = 'datasets/raw_datasets/init-train-valid.json'
 
-# tfrecord
+# 对原始数据处理后的 TFRecord
 TRAIN_OUTPUT_FILE_PATH = 'datasets/tfrecord_datasets/bi_cls_s1_train.tfrecord'
 VALID_OUTPUT_FILE_PATH = 'datasets/tfrecord_datasets/bi_cls_s1_valid.tfrecord'
 PREDICT_TRAIN_OUTPUT_FILE_PATH = 'datasets/tfrecord_datasets/bi_cls_s1_predict_train.tfrecord'
@@ -477,7 +478,7 @@ def get_model_params():
 
 def bi_cls_s1_main():
     logging.set_verbosity(logging.INFO)
-    task = BiCLSTaskS1(
+    task = MultiTurnMRCCLSTask(
         get_model_params(),
         use_pretrain=True,
         use_prev_record=True,
