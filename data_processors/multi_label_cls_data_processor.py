@@ -20,21 +20,21 @@ from utils.data_utils import ids_to_vector
 vocab_filepath = 'vocabs/bert-base-chinese-vocab.txt'
 
 # raw dataset
-init_train_table_txt_path = 'datasets/raw_datasets/init-train-table.txt'
-init_train_txt_path = 'datasets/raw_datasets/init-train.txt'
+init_train_table_txt_path = 'common-datasets/raw_datasets/init-train-table.txt'
+init_train_txt_path = 'common-datasets/raw_datasets/init-train.txt'
 
 # preprocessed
-multi_label_cls_train_save_path = 'datasets/preprocessed_datasets/multi_label_cls_train.json'
-multi_label_cls_valid_save_path = 'datasets/preprocessed_datasets/multi_label_cls_valid.json'
+multi_label_cls_train_save_path = 'common-datasets/preprocessed_datasets/multi_label_cls_train.json'
+multi_label_cls_valid_save_path = 'common-datasets/preprocessed_datasets/multi_label_cls_valid.json'
 
 
 # tfrecord
-multi_label_cls_train_tfrecord_save_path = 'datasets/tfrecord_datasets/multi_label_cls_train.tfrecord'
-multi_label_cls_valid_tfrecord_save_path = 'datasets/tfrecord_datasets/multi_label_cls_valid.tfrecord'
+multi_label_cls_train_tfrecord_save_path = 'common-datasets/tfrecord_datasets/multi_label_cls_train.tfrecord'
+multi_label_cls_valid_tfrecord_save_path = 'common-datasets/tfrecord_datasets/multi_label_cls_valid.tfrecord'
 
 # tfrecord meta
-multi_label_cls_train_meta_save_path = 'datasets/tfrecord_datasets/multi_label_cls_train_meta.json'
-multi_label_cls_valid_meta_save_path = 'datasets/tfrecord_datasets/multi_label_cls_valid_meta.json'
+multi_label_cls_train_meta_save_path = 'common-datasets/tfrecord_datasets/multi_label_cls_train_meta.json'
+multi_label_cls_valid_meta_save_path = 'common-datasets/tfrecord_datasets/multi_label_cls_valid_meta.json'
 
 MAX_SEQ_LEN = 120
 

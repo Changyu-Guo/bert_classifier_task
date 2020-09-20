@@ -484,18 +484,18 @@ class MRCTask:
 TASK_NAME = 'mrc'
 
 # raw json
-MRC_TRAIN_INPUT_FILE_PATH = 'datasets/preprocessed_datasets/mrc_train.json'
-MRC_VALID_INPUT_FILE_PATH = 'datasets/preprocessed_datasets/mrc_valid.json'
+MRC_TRAIN_INPUT_FILE_PATH = 'common-datasets/preprocessed_datasets/mrc_train.json'
+MRC_VALID_INPUT_FILE_PATH = 'common-datasets/preprocessed_datasets/mrc_valid.json'
 
 # tfrecord
-TRAIN_OUTPUT_FILE_PATH = 'datasets/tfrecord_datasets/mrc_train.tfrecord'
-VALID_OUTPUT_FILE_PATH = 'datasets/tfrecord_datasets/mrc_valid.tfrecord'
-PREDICT_VALID_OUTPUT_FILE_PATH = 'datasets/tfrecord_datasets/mrc_predict_valid.tfrecord'
+TRAIN_OUTPUT_FILE_PATH = 'common-datasets/tfrecord_datasets/mrc_train.tfrecord'
+VALID_OUTPUT_FILE_PATH = 'common-datasets/tfrecord_datasets/mrc_valid.tfrecord'
+PREDICT_VALID_OUTPUT_FILE_PATH = 'common-datasets/tfrecord_datasets/mrc_predict_valid.tfrecord'
 
 # tfrecord meta data
-TRAIN_OUTPUT_META_PATH = 'datasets/tfrecord_datasets/mrc_train_meta.json'
-VALID_OUTPUT_META_PATH = 'datasets/tfrecord_datasets/mrc_valid_meta.json'
-PREDICT_VALID_OUTPUT_META_PATH = 'datasets/tfrecord_datasets/mrc_predict_valid_meta.json'
+TRAIN_OUTPUT_META_PATH = 'common-datasets/tfrecord_datasets/mrc_train_meta.json'
+VALID_OUTPUT_META_PATH = 'common-datasets/tfrecord_datasets/mrc_valid_meta.json'
+PREDICT_VALID_OUTPUT_META_PATH = 'common-datasets/tfrecord_datasets/mrc_predict_valid_meta.json'
 
 # save relate
 MODEL_SAVE_DIR = 'saved_models'

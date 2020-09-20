@@ -273,14 +273,14 @@ VALID_INPUT_FILE_PATH = 'inference_results/mrc_results/in_use/second_step/valid_
 # tfrecord
 # 一般情况下不需要管文件夹中原来得 TFRecord
 # 因为重新生成浪费的时间也不多
-TRAIN_OUTPUT_FILE_PATH = 'datasets/tfrecord_datasets/bi_cls_train.tfrecord'
-VALID_OUTPUT_FILE_PATH = 'datasets/tfrecord_datasets/bi_cls_valid.tfrecord'
-PREDICT_TRAIN_OUTPUT_FILE_PATH = 'datasets/tfrecord_datasets/bi_cls_predict_train.tfrecord'
-PREDICT_VALID_OUTPUT_FILE_PATH = 'datasets/tfrecord_datasets/bi_cls_predict_valid.tfrecord'
+TRAIN_OUTPUT_FILE_PATH = 'common-datasets/tfrecord_datasets/bi_cls_train.tfrecord'
+VALID_OUTPUT_FILE_PATH = 'common-datasets/tfrecord_datasets/bi_cls_valid.tfrecord'
+PREDICT_TRAIN_OUTPUT_FILE_PATH = 'common-datasets/tfrecord_datasets/bi_cls_predict_train.tfrecord'
+PREDICT_VALID_OUTPUT_FILE_PATH = 'common-datasets/tfrecord_datasets/bi_cls_predict_valid.tfrecord'
 
 # tfrecord meta data
-TRAIN_OUTPUT_META_PATH = 'datasets/tfrecord_datasets/bi_cls_train_meta.json'
-VALID_OUTPUT_META_PATH = 'datasets/tfrecord_datasets/bi_cls_valid_meta.json'
+TRAIN_OUTPUT_META_PATH = 'common-datasets/tfrecord_datasets/bi_cls_train_meta.json'
+VALID_OUTPUT_META_PATH = 'common-datasets/tfrecord_datasets/bi_cls_valid_meta.json'
 
 # save relate
 MODEL_SAVE_DIR = 'saved_models/binary_cls_models'

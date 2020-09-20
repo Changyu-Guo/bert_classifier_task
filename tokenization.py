@@ -12,7 +12,7 @@ SPIECE_UNDERLINE = "▁"
 
 
 def validate_case_matches_checkpoint(do_lower_case, init_checkpoint):
-    """Checks whether the casing config is consistent with the checkpoint name."""
+    """Checks whether the casing configs is consistent with the checkpoint name."""
 
     # The casing has to be passed in by the user and there is no explicit check
     # as to whether it matches the checkpoint. The casing information probably

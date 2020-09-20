@@ -350,7 +350,7 @@ def postprocess_valid_output(
     print(f1)
 
     # origin valid data
-    init_train_examples = read_init_train_valid_examples('datasets/raw_datasets/init-train-valid.json')
+    init_train_examples = read_init_train_valid_examples('common-datasets/raw_datasets/init-train-valid.json')
     _, relations, _, _ = extract_relations_from_init_train_table()
 
     # 每一条 example 都对应一个原始的 init train example
@@ -394,7 +394,7 @@ def postprocess_train_output(
     print(f1)
 
     # origin valid data
-    init_train_examples = read_init_train_valid_examples('datasets/raw_datasets/init-train-train.json')
+    init_train_examples = read_init_train_valid_examples('common-datasets/raw_datasets/init-train-train.json')
     _, relations, _, _ = extract_relations_from_init_train_table()
 
     # 每一条 example 都对应一个原始的 init train example

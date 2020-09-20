@@ -5,7 +5,6 @@ import json
 import time
 import collections
 import tensorflow as tf
-import tensorflow_addons as tfa
 from absl import logging
 
 from create_models import create_multi_label_cls_model
@@ -400,18 +399,18 @@ class CLSTask:
 TASK_NAME = 'multi_label_cls'
 
 # raw json path
-TRAIN_INPUT_FILE_PATH = 'datasets/preprocessed_datasets/multi_label_cls_train.json'
-VALID_INPUT_FILE_PATH = 'datasets/preprocessed_datasets/multi_label_cls_valid.json'
+TRAIN_INPUT_FILE_PATH = 'common-datasets/preprocessed_datasets/multi_label_cls_train.json'
+VALID_INPUT_FILE_PATH = 'common-datasets/preprocessed_datasets/multi_label_cls_valid.json'
 
 # tfrecord path
-TRAIN_OUTPUT_FILE_PATH = 'datasets/tfrecord_datasets/multi_label_cls_train.tfrecord'
-VALID_OUTPUT_FILE_PATH = 'datasets/tfrecord_datasets/multi_label_cls_valid.tfrecord'
-PREDICT_TRAIN_OUTPUT_FILE_PATH = 'datasets/tfrecord_datasets/multi_label_cls_predict_train.tfrecord'
-PREDICT_VALID_OUTPUT_FILE_PATH = 'datasets/tfrecord_datasets/multi_label_cls_predict_valid.tfrecord'
+TRAIN_OUTPUT_FILE_PATH = 'common-datasets/tfrecord_datasets/multi_label_cls_train.tfrecord'
+VALID_OUTPUT_FILE_PATH = 'common-datasets/tfrecord_datasets/multi_label_cls_valid.tfrecord'
+PREDICT_TRAIN_OUTPUT_FILE_PATH = 'common-datasets/tfrecord_datasets/multi_label_cls_predict_train.tfrecord'
+PREDICT_VALID_OUTPUT_FILE_PATH = 'common-datasets/tfrecord_datasets/multi_label_cls_predict_valid.tfrecord'
 
 # tfrecord meta data
-TRAIN_OUTPUT_META_PATH = 'datasets/tfrecord_datasets/multi_label_cls_train_meta.json'
-VALID_OUTPUT_META_PATH = 'datasets/tfrecord_datasets/multi_label_cls_valid_meta.json'
+TRAIN_OUTPUT_META_PATH = 'common-datasets/tfrecord_datasets/multi_label_cls_train_meta.json'
+VALID_OUTPUT_META_PATH = 'common-datasets/tfrecord_datasets/multi_label_cls_valid_meta.json'
 
 # save relate
 MODEL_SAVE_DIR = 'saved_models/multi_label_cls_models'

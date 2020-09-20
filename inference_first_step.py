@@ -31,13 +31,13 @@ VOCAB_FILE_PATH = 'vocabs/bert-base-chinese-vocab.txt'
 
 # 推断的输入
 train_data_before_first_step_save_path = \
-    'datasets/preprocessed_datasets/before_mrc_first_step/in_use/first_step_' \
+    'common-datasets/preprocessed_datasets/before_mrc_first_step/in_use/first_step_' \
     'train.json'
-valid_data_before_first_step_save_path = 'datasets/preprocessed_datasets/before_mrc_first_step/in_use/first_step_' \
+valid_data_before_first_step_save_path = 'common-datasets/preprocessed_datasets/before_mrc_first_step/in_use/first_step_' \
                                          'valid.json'
 
-train_tfrecord_before_first_step_save_path = 'datasets/tfrecord_datasets/first_step_train.tfrecord'
-valid_tfrecord_before_first_step_save_path = 'datasets/tfrecord_datasets/first_step_valid.tfrecord'
+train_tfrecord_before_first_step_save_path = 'common-datasets/tfrecord_datasets/first_step_train.tfrecord'
+valid_tfrecord_before_first_step_save_path = 'common-datasets/tfrecord_datasets/first_step_valid.tfrecord'
 
 # first step inference results
 train_data_after_first_step_save_path = 'inference_results/mrc_results/in_use/first_step/train_results.json'

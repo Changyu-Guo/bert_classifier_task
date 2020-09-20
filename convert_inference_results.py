@@ -14,16 +14,16 @@ mrc_first_step_valid_results_path = 'inference_results/mrc_results/in_use/first_
 
 # for mrc first step
 train_data_before_first_step_save_path = \
-    'datasets/preprocessed_datasets/before_mrc_first_step/in_use/first_step_train.json'
+    'common-datasets/preprocessed_datasets/before_mrc_first_step/in_use/first_step_train.json'
 valid_data_before_first_step_save_path = \
-    'datasets/preprocessed_datasets/before_mrc_first_step/in_use/first_step_valid.json'
+    'common-datasets/preprocessed_datasets/before_mrc_first_step/in_use/first_step_valid.json'
 
 # for mrc second step
 train_data_before_second_step_save_path = \
-    'datasets/preprocessed_datasets/before_mrc_second_step/in_use/second_step_train' \
+    'common-datasets/preprocessed_datasets/before_mrc_second_step/in_use/second_step_train' \
     '.json'
 valid_data_before_second_step_save_path = \
-    'datasets/preprocessed_datasets/before_mrc_second_step/in_use/second_step_valid' \
+    'common-datasets/preprocessed_datasets/before_mrc_second_step/in_use/second_step_valid' \
     '.json'
 
 

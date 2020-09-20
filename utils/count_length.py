@@ -22,8 +22,8 @@ def count_text_len():
 
 
 def count_question_len():
-    mrc_train_json = 'datasets/preprocessed_datasets/mrc_train.json'
-    mrc_valid_json = 'datasets/preprocessed_datasets/mrc_valid.json'
+    mrc_train_json = 'common-datasets/preprocessed_datasets/mrc_train.json'
+    mrc_valid_json = 'common-datasets/preprocessed_datasets/mrc_valid.json'
 
     with tf.io.gfile.GFile(mrc_train_json, mode='r') as reader:
         train_data = json.load(reader)['data'][0]

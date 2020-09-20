@@ -3,7 +3,7 @@
 import collections
 from data_processors.commom import extract_examples_from_init_train
 
-init_train_txt_path = '../datasets/raw_datasets/init-train.txt'
+init_train_txt_path = '../common-datasets/init-train.txt'
 
 init_train_examples = extract_examples_from_init_train(init_train_txt_path)
 

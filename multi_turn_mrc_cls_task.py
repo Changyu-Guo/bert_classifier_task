@@ -414,18 +414,18 @@ TASK_NAME = 'multi_turn_mrc_cls_task'
 
 # 原始数据加载路径
 # 当前任务的原始数据应该是 init-train
-TRAIN_INPUT_FILE_PATH = 'datasets/raw_datasets/init-train-train.json'
-VALID_INPUT_FILE_PATH = 'datasets/raw_datasets/init-train-valid.json'
+TRAIN_INPUT_FILE_PATH = 'common-datasets/init-train-train.json'
+VALID_INPUT_FILE_PATH = 'common-datasets/init-train-valid.json'
 
 # 对原始数据处理后的 TFRecord
-TRAIN_OUTPUT_FILE_PATH = 'datasets/tfrecord_datasets/bi_cls_s1_train.tfrecord'
-VALID_OUTPUT_FILE_PATH = 'datasets/tfrecord_datasets/bi_cls_s1_valid.tfrecord'
-PREDICT_TRAIN_OUTPUT_FILE_PATH = 'datasets/tfrecord_datasets/bi_cls_s1_predict_train.tfrecord'
-PREDICT_VALID_OUTPUT_FILE_PATH = 'datasets/tfrecord_datasets/bi_cls_s1_predict_valid.tfrecord'
+TRAIN_OUTPUT_FILE_PATH = 'common-datasets/tfrecord_datasets/bi_cls_s1_train.tfrecord'
+VALID_OUTPUT_FILE_PATH = 'common-datasets/tfrecord_datasets/bi_cls_s1_valid.tfrecord'
+PREDICT_TRAIN_OUTPUT_FILE_PATH = 'common-datasets/tfrecord_datasets/bi_cls_s1_predict_train.tfrecord'
+PREDICT_VALID_OUTPUT_FILE_PATH = 'common-datasets/tfrecord_datasets/bi_cls_s1_predict_valid.tfrecord'
 
 # tfrecord meta data
-TRAIN_OUTPUT_META_PATH = 'datasets/tfrecord_datasets/bi_cls_s1_train_meta.json'
-VALID_OUTPUT_META_PATH = 'datasets/tfrecord_datasets/bi_cls_s1_valid_meta.json'
+TRAIN_OUTPUT_META_PATH = 'common-datasets/tfrecord_datasets/bi_cls_s1_train_meta.json'
+VALID_OUTPUT_META_PATH = 'common-datasets/tfrecord_datasets/bi_cls_s1_valid_meta.json'
 
 # save relate
 MODEL_SAVE_DIR = 'saved_models/bi_cls_s1_models'

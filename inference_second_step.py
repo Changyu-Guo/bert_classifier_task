@@ -24,14 +24,14 @@ INFERENCE_MODEL_DIR = 'saved_models/mrc_models/mrc_v2_epochs_3'
 VOCAB_FILE_PATH = 'vocabs/bert-base-chinese-vocab.txt'
 
 train_data_before_second_step_save_path = \
-    'datasets/preprocessed_datasets/before_mrc_second_step/in_use/second_step_train' \
+    'common-datasets/preprocessed_datasets/before_mrc_second_step/in_use/second_step_train' \
     '.json'
 valid_data_before_second_step_save_path = \
-    'datasets/preprocessed_datasets/before_mrc_second_step/in_use/second_step_valid' \
+    'common-datasets/preprocessed_datasets/before_mrc_second_step/in_use/second_step_valid' \
     '.json'
 
-train_tfrecord_before_second_step_save_path = 'datasets/tfrecord_datasets/second_step_train.tfrecord'
-valid_tfrecord_before_second_step_save_path = 'datasets/tfrecord_datasets/second_step_valid.tfrecord'
+train_tfrecord_before_second_step_save_path = 'common-datasets/tfrecord_datasets/second_step_train.tfrecord'
+valid_tfrecord_before_second_step_save_path = 'common-datasets/tfrecord_datasets/second_step_valid.tfrecord'
 
 train_data_after_second_step_save_path = \
     'inference_results/mrc_results/in_use/second_step/train_results.json'
