@@ -135,7 +135,9 @@ def read_examples_for_train(filepath):
     reader.close()
 
     # 53, 53, _, _
-    all_subjects, all_relations, _, _ = extract_relations_from_init_train_table()
+    all_subjects, all_relations, _, _ = extract_relations_from_init_train_table(
+        '../common-datasets/init-train-table.txt'
+    )
 
     # 根据 relation 获取当前 relation 的 index
     relation_to_index_map = collections.OrderedDict()
@@ -234,7 +236,9 @@ def read_examples_for_valid(filepath):
     reader.close()
 
     # 53, 53, _, _
-    all_subjects, all_relations, _, _ = extract_relations_from_init_train_table()
+    all_subjects, all_relations, _, _ = extract_relations_from_init_train_table(
+        '../common-datasets/init-train-table.txt'
+    )
 
     # 根据 relation 获取当前 relation 的 index
     relation_to_index_map = collections.OrderedDict()
@@ -248,7 +252,7 @@ def read_examples_for_valid(filepath):
     # 对每一条 example 处理
     for index, paragraph in enumerate(input_data[0]['paragraphs']):
 
-        text = paragraph['text']
+        text = paragraph['context']
 
         sros = paragraph['origin_sros']
 
@@ -284,8 +288,6 @@ def convert_examples_to_features(
 ):
     """
         此函数的主要作用是对 text tokenize 并转为 ids
-
-        TODO: 学习如何单纯使用 huggingface/tokenizers 来编写此函数
     """
     tokenizer = BertWordPieceTokenizer(vocab_file=vocab_file_path)
     tokenizer.enable_padding(length=max_seq_len)
@@ -313,14 +315,17 @@ def convert_examples_to_features(
 
         output_fn(feature)
 
+        if (example_index + 1) % 1000 == 0:
+            print(example_index + 1)
+
 
 def generate_tfrecord_from_json_file(
         input_file_path,
         vocab_file_path,
-        output_file_path,
+        output_save_path,
+        meta_save_path,
         max_seq_len,
-        is_train,
-        return_examples_and_features
+        is_train
 ):
     if is_train:
         examples = read_examples_for_train(
@@ -331,82 +336,25 @@ def generate_tfrecord_from_json_file(
             filepath=input_file_path
         )
 
-    writer = FeatureWriter(filename=output_file_path)
-
-    features = []
-
-    def _append_feature(feature):
-        features.append(feature)
-        writer.process_feature(feature)
-
-    if return_examples_and_features:
-        output_fn = _append_feature
-    else:
-        output_fn = writer.process_feature
+    writer = FeatureWriter(filename=output_save_path)
 
     convert_examples_to_features(
         examples=examples,
         vocab_file_path=vocab_file_path,
         max_seq_len=max_seq_len,
-        output_fn=output_fn
+        output_fn=writer.process_feature
     )
     meta_data = {
         'data_size': writer.total_features,
         'max_seq_len': max_seq_len
     }
     writer.close()
-
-    if return_examples_and_features:
-        return meta_data, examples, features
-    else:
-        return meta_data
-
-
-def postprocess_valid_output(
-        batched_origin_is_valid,
-        batched_pred_is_valid,
-        results_save_path
-):
-    precision, recall, f1, _ = precision_recall_fscore_support(
-        batched_origin_is_valid, batched_pred_is_valid, average='micro'
-    )
-    print(precision)
-    print(recall)
-    print(f1)
-
-    # origin valid data
-    init_train_examples = read_init_train_valid_examples('datasets/raw_datasets/init-train-valid.json')
-    _, relations, _, _ = extract_relations_from_init_train_table()
-
-    # 每一条 example 都对应一个原始的 init train example
-    for example_index, example in enumerate(init_train_examples):
-
-        # 当前 example / feature 对应的原始 valid data index
-        init_train_example_index = example_index
-
-        # 构建 pred_sros 键
-        if not init_train_examples[init_train_example_index].get('pred_sros'):
-            init_train_examples[init_train_example_index]['pred_sros'] = []
-
-        # 获取当前 init train example 对应的一组推断结果
-        current_pred_indices = batched_pred_is_valid[init_train_example_index]
-
-        # 将 53 个预测结果对应到 relation
-        # 然后添加到对应的 init train example 中
-        for i in range(len(current_pred_indices)):
-            if current_pred_indices[i] == 1:
-                init_train_examples[init_train_example_index]['pred_sros'].append(
-                    {
-                        'relation': relations[i]
-                    }
-                )
-
-    with tf.io.gfile.GFile(results_save_path, mode='w') as writer:
-        writer.write(json.dumps(init_train_examples, ensure_ascii=False, indent=2))
+    with tf.io.gfile.GFile(meta_save_path, mode='w') as writer:
+        writer.write(json.dumps(meta_data, ensure_ascii=False, indent=2) + '\n')
     writer.close()
 
 
-def postprocess_train_output(
+def inference_train_results(
         batched_origin_is_valid,
         batched_pred_is_valid,
         results_save_path
@@ -450,8 +398,49 @@ def postprocess_train_output(
     writer.close()
 
 
+def inference_valid_results(
+        batched_origin_is_valid,
+        batched_pred_is_valid,
+        results_save_path
+):
+    precision, recall, f1, _ = precision_recall_fscore_support(
+        batched_origin_is_valid, batched_pred_is_valid, average='micro'
+    )
+    print(precision)
+    print(recall)
+    print(f1)
+
+    # origin valid data
+    init_train_examples = read_init_train_valid_examples('datasets/raw_datasets/init-train-valid.json')
+    _, relations, _, _ = extract_relations_from_init_train_table()
+
+    # 每一条 example 都对应一个原始的 init train example
+    for example_index, example in enumerate(init_train_examples):
+
+        # 当前 example / feature 对应的原始 valid data index
+        init_train_example_index = example_index
+
+        # 构建 pred_sros 键
+        if not init_train_examples[init_train_example_index].get('pred_sros'):
+            init_train_examples[init_train_example_index]['pred_sros'] = []
+
+        # 获取当前 init train example 对应的一组推断结果
+        current_pred_indices = batched_pred_is_valid[init_train_example_index]
+
+        # 将 53 个预测结果对应到 relation
+        # 然后添加到对应的 init train example 中
+        for i in range(len(current_pred_indices)):
+            if current_pred_indices[i] == 1:
+                init_train_examples[init_train_example_index]['pred_sros'].append(
+                    {
+                        'relation': relations[i]
+                    }
+                )
+
+    with tf.io.gfile.GFile(results_save_path, mode='w') as writer:
+        writer.write(json.dumps(init_train_examples, ensure_ascii=False, indent=2))
+    writer.close()
+
+
 if __name__ == '__main__':
-    import sys
-    sys.path.append('..')
-    print(sys.path)
-    read_examples_for_train('datasets/train.json')
+    pass
