@@ -81,7 +81,6 @@ class FeatureWriter:
     def __init__(self, filename):
         self.filename = filename
 
-        # 打开文件
         options = tf.io.TFRecordOptions(compression_type='GZIP')
         self._writer = tf.io.TFRecordWriter(filename, options)
 
@@ -101,6 +100,7 @@ class FeatureWriter:
         # 以确保 TFRecord 中保存的内容以及保存格式
         features = collections.OrderedDict()
         features['unique_ids'] = create_int_feature([feature.unique_id])
+        features['example_indices'] = create_int_feature([feature.example_index])
         features['inputs_ids'] = create_int_feature(feature.inputs_ids)
         features['inputs_mask'] = create_int_feature(feature.inputs_mask)
         features['segment_ids'] = create_int_feature(feature.segment_ids)
@@ -451,5 +451,7 @@ def postprocess_train_output(
 
 
 if __name__ == '__main__':
-    pass
-
+    import sys
+    sys.path.append('..')
+    print(sys.path)
+    read_examples_for_train('datasets/train.json')
