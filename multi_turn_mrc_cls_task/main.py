@@ -217,8 +217,15 @@ class MultiTurnMRCCLSTask:
             ))
 
         for index, data in enumerate(dataset):
-            print(type(data))
+            unique_ids = data.pop('unique_ids')
+            example_indices = data.pop('example_indices')
+            model_output = model.predict(map_data_to_model(data))
+            batch_probs = model_output['probs']
+
             break
+
+    def generate_predict_item(self, unique_ids, example_indices):
+        pass
 
 
 # Global Variables ############
@@ -240,7 +247,7 @@ INFERENCE_RESULTS_SAVE_DIR = 'results'
 
 VOCAB_FILE_PATH = '../vocabs/bert-base-chinese-vocab.txt'
 MAX_SEQ_LEN = 165
-PREDICT_BATCH_SIZE = 10000
+PREDICT_BATCH_SIZE = 128
 PREDICT_THRESHOLD = 0.5
 
 # train relate
