@@ -241,4 +241,5 @@ def get_squad_json_qas_item_template(question: str, answers: List, qas_id: str) 
 
 
 if __name__ == '__main__':
-    pass
+    examples = read_init_train_train_examples()
+    print(len(examples))

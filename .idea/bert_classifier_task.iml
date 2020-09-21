@@ -4,6 +4,7 @@
     <content url="file://$MODULE_DIR$">
       <excludeFolder url="file://$MODULE_DIR$/inference_results" />
       <excludeFolder url="file://$MODULE_DIR$/logs" />
+      <excludeFolder url="file://$MODULE_DIR$/multi_turn_mrc_cls_task/saved_models" />
       <excludeFolder url="file://$MODULE_DIR$/pretrained_model" />
       <excludeFolder url="file://$MODULE_DIR$/saved_models" />
     </content>
