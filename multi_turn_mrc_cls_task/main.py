@@ -2,8 +2,6 @@
 
 import os
 import json
-import time
-import collections
 
 import tensorflow as tf
 from absl import logging
@@ -230,7 +228,7 @@ class MultiTurnMRCCLSTask:
             ):
                 all_results.append(result)
 
-            break
+            print(index)
 
         with tf.io.gfile.GFile(save_path, mode='w') as writer:
             writer.write(json.dumps(all_results, ensure_ascii=False, indent=2) + '\n')
@@ -310,5 +308,5 @@ if __name__ == '__main__':
     task = main()
     task.predict_tfrecord(
         'datasets/tfrecords/valid.tfrecord',
-        'results/temp_result.json'
+        'results/valid_result.json'
     )

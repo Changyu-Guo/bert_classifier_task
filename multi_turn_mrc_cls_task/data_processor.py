@@ -383,14 +383,8 @@ def postprocess_results(
         results = json.load(reader)
     reader.close()
 
-    # assert len(results) % 53 == 0
-    # assert len(results) / 53 == len(raw_data[0]['paragraphs'])
-
-    print(len(results) / 53)
-    for i in range(len(results) // 53):
-        cur_index = i * 53
-        for i in range(53):
-            print(cur_index + i)
+    assert len(results) % 53 == 0
+    assert len(results) / 53 == len(raw_data[0]['paragraphs'])
 
 
 def inference_train_results(
