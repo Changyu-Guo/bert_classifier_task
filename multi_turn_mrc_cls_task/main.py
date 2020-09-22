@@ -3,6 +3,7 @@
 import os
 import json
 import time
+import collections
 
 import tensorflow as tf
 from absl import logging
@@ -64,7 +65,6 @@ class MultiTurnMRCCLSTask:
         self.tensorboard_log_dir = kwargs['tensorboard_log_dir']
 
         # inference
-        self.inference_results_save_dir = kwargs['inference_results_save_dir']
         self.predict_batch_size = kwargs['predict_batch_size']
         self.predict_threshold = kwargs['predict_threshold']
 
@@ -194,7 +194,7 @@ class MultiTurnMRCCLSTask:
 
         return callbacks
 
-    def predict_tfrecord(self, tfrecord_path):
+    def predict_tfrecord(self, tfrecord_path, save_path):
         dataset = read_and_batch_from_tfrecord(
             filepath=tfrecord_path,
             max_seq_len=self.max_seq_len,
@@ -216,16 +216,34 @@ class MultiTurnMRCCLSTask:
                 self.inference_model_dir
             ))
 
+        all_results = []
         for index, data in enumerate(dataset):
             unique_ids = data.pop('unique_ids')
             example_indices = data.pop('example_indices')
             model_output = model.predict(map_data_to_model(data))
             batch_probs = model_output['probs']
 
+            for result in self.generate_predict_item(
+                unique_ids=unique_ids,
+                example_indices=example_indices,
+                batch_probs=batch_probs
+            ):
+                all_results.append(result)
+
             break
 
-    def generate_predict_item(self, unique_ids, example_indices):
-        pass
+        with tf.io.gfile.GFile(save_path, mode='w') as writer:
+            writer.write(json.dumps(all_results, ensure_ascii=False, indent=2) + '\n')
+        writer.close()
+
+    def generate_predict_item(self, unique_ids, example_indices, batch_probs):
+
+        for unique_id, example_index, prob in zip(unique_ids, example_indices, batch_probs):
+            yield dict(
+                unique_id=unique_id.numpy().item(),
+                example_index=example_index.numpy().item(),
+                prob=prob[0].item()
+            )
 
 
 # Global Variables ############
@@ -243,7 +261,6 @@ VALID_TFRECORD_META_PATH = 'datasets/tfrecords/valid_meta.json'
 
 MODEL_SAVE_DIR = 'saved_models'
 TENSORBOARD_LOG_DIR = 'logs'
-INFERENCE_RESULTS_SAVE_DIR = 'results'
 
 VOCAB_FILE_PATH = '../vocabs/bert-base-chinese-vocab.txt'
 MAX_SEQ_LEN = 165
@@ -274,7 +291,6 @@ def get_model_params():
         enable_tensorboard=True,
         enable_early_stopping=True,
         tensorboard_log_dir=TENSORBOARD_LOG_DIR,
-        inference_results_save_dir=INFERENCE_RESULTS_SAVE_DIR,
         predict_threshold=PREDICT_THRESHOLD
     )
 
@@ -292,4 +308,7 @@ def main():
 
 if __name__ == '__main__':
     task = main()
-    task.predict_tfrecord('datasets/tfrecords/valid.tfrecord')
+    task.predict_tfrecord(
+        'datasets/tfrecords/valid.tfrecord',
+        'results/temp_result.json'
+    )

@@ -1,6 +1,8 @@
 # -*- coding: utf - 8 -*-
 
 import json
+import gzip
+import pickle
 import random
 import collections
 import tensorflow as tf
@@ -319,14 +321,10 @@ def convert_examples_to_features(
             print(example_index + 1)
 
 
-def generate_tfrecord_from_json_file(
-        input_file_path,
-        vocab_file_path,
-        output_save_path,
-        meta_save_path,
-        max_seq_len,
-        is_train
-):
+def generate_tfrecord_from_json_file(input_file_path, vocab_file_path,
+                                     output_save_path, meta_save_path,
+                                     features_save_path, max_seq_len,
+                                     is_train):
     if is_train:
         examples = read_examples_for_train(
             filepath=input_file_path
@@ -338,20 +336,61 @@ def generate_tfrecord_from_json_file(
 
     writer = FeatureWriter(filename=output_save_path)
 
+    features = []
+
+    def _append_feature(feature):
+        features.append(feature)
+        writer.process_feature(feature)
+
     convert_examples_to_features(
         examples=examples,
         vocab_file_path=vocab_file_path,
         max_seq_len=max_seq_len,
-        output_fn=writer.process_feature
+        output_fn=_append_feature
     )
     meta_data = {
         'data_size': writer.total_features,
         'max_seq_len': max_seq_len
     }
     writer.close()
+
+    # save meta info
     with tf.io.gfile.GFile(meta_save_path, mode='w') as writer:
         writer.write(json.dumps(meta_data, ensure_ascii=False, indent=2) + '\n')
     writer.close()
+
+    # save features
+    with gzip.open(features_save_path, 'wb') as writer:
+        pickle.dump(features, writer, protocol=pickle.HIGHEST_PROTOCOL)
+    writer.close()
+
+
+def postprocess_results(
+        raw_data_path,
+        features_path,
+        results_path,
+        save_path
+):
+    with tf.io.gfile.GFile(raw_data_path, mode='r') as reader:
+        raw_data = json.load(reader)['data']
+    reader.close()
+
+    with gzip.open(features_path, mode='rb') as reader:
+        features = pickle.load(reader)
+    reader.close()
+
+    with tf.io.gfile.GFile(results_path, mode='r') as reader:
+        results = json.load(reader)
+    reader.close()
+
+    # assert len(results) % 53 == 0
+    # assert len(results) / 53 == len(raw_data[0]['paragraphs'])
+
+    print(len(results) / 53)
+    for i in range(len(results) // 53):
+        cur_index = i * 53
+        for i in range(53):
+            print(cur_index + i)
 
 
 def inference_train_results(
@@ -443,4 +482,9 @@ def inference_valid_results(
 
 
 if __name__ == '__main__':
-    pass
+    postprocess_results(
+        raw_data_path='datasets/valid.json',
+        features_path='datasets/features/valid_features.pkl',
+        results_path='results/temp_result.json',
+        save_path='results/postprocessed/temp_results.json'
+    )
