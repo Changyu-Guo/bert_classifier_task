@@ -9,40 +9,43 @@ import json
 import collections
 import tensorflow as tf
 import tokenization
-from data_processors.commom import read_init_train_train_examples
-from data_processors.commom import read_init_train_valid_examples
-from data_processors.commom import get_squad_json_template
-from data_processors.commom import get_squad_json_paragraph_template
-from data_processors.commom import get_squad_json_qas_item_template
-from data_processors.commom import extract_examples_dict_from_relation_questions
+from common_data_utils import read_init_train_train_examples
+from common_data_utils import read_init_train_valid_examples
+from common_data_utils import get_squad_json_qas_item_template
+from common_data_utils import extract_examples_dict_from_relation_questions
 
-# mrc task
-MRC_TRAIN_SAVE_PATH = 'common-datasets/preprocessed_datasets/mrc_train.json'
-MRC_VALID_SAVE_PATH = 'common-datasets/preprocessed_datasets/mrc_valid.json'
 
-# multi label cls step inference result
-multi_label_cls_train_results_path = 'inference_results/multi_label_cls_results/in_use/train_results.json'
-multi_label_cls_valid_results_path = 'inference_results/multi_label_cls_results/in_use/valid_results.json'
+def convert_last_step_results_for_train(results_path, save_path):
+    relation_questions_dict = extract_examples_dict_from_relation_questions(
+        init_train_table_path='../common-datasets/init-train-table.txt',
+        relation_questions_path='../common-datasets/relation_questions.txt'
+    )
 
-# bi cls s1 inference result
-bi_cls_s1_train_results_path = 'inference_results/bi_cls_s1_results/train_results.json'
-bi_cls_s1_valid_results_path = 'inference_results/bi_cls_s1_results/valid_results.json'
+    with tf.io.gfile.GFile(results_path, mode='r') as reader:
+        results = json.load(reader)
+    reader.close()
 
-# first step json file
-train_data_before_first_step_save_path = 'common-datasets/preprocessed_datasets/first_step_train.json'
-valid_data_before_first_step_save_path = 'common-datasets/preprocessed_datasets/first_step_valid.json'
+    paragraphs = results['data'][0]['paragraphs']
 
-# first step inference results
-first_step_inference_train_save_path = 'inference_results/mrc_results/in_use/first_step/train_results.json'
-first_step_inference_valid_save_path = 'inference_results/mrc_results/in_use/first_step/valid_results.json'
+    _id = 0
+    for paragraph in paragraphs:
+        pred_sros = paragraph['pred_sros']
+        for sro in pred_sros:
+            relation_question = relation_questions_dict[sro['relation']]
+            question_a = relation_question.question_a
 
-# second step json file
-second_step_train_save_path = 'common-datasets/preprocessed_datasets/second_step_train.json'
-second_step_valid_save_path = 'common-datasets/preprocessed_datasets/second_step_valid.json'
+            squad_json_qas_item = {
+                'question': question_a,
+                'relation': sro['relation'],  # relation 用于推断
+                'id': 'id_' + str(_id)
+            }
+            _id += 1
 
-# second step inference results
-second_step_inference_train_save_path = 'inference_results/mrc_results/in_use/second_step/train_results.json'
-second_step_inference_valid_save_path = 'inference_results/mrc_results/in_use/second_step/valid_results.json'
+            
+
+
+def convert_last_step_results_for_infer(results_path, save_path):
+    pass
 
 
 class SquadExample:
@@ -503,4 +506,7 @@ def mrc_data_processor_main():
 
 
 if __name__ == '__main__':
-    pass
+    convert_last_step_results(
+        results_path='../multi_turn_mrc_cls_task/results/postprocessed/temp_results.json',
+        save_path='datasets/raw/temp_valid.json'
+    )

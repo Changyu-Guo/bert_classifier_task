@@ -230,6 +230,8 @@ class MultiTurnMRCCLSTask:
 
             print(index)
 
+            break
+
         with tf.io.gfile.GFile(save_path, mode='w') as writer:
             writer.write(json.dumps(all_results, ensure_ascii=False, indent=2) + '\n')
         writer.close()
@@ -262,7 +264,7 @@ TENSORBOARD_LOG_DIR = 'logs'
 
 VOCAB_FILE_PATH = '../vocabs/bert-base-chinese-vocab.txt'
 MAX_SEQ_LEN = 165
-PREDICT_BATCH_SIZE = 128
+PREDICT_BATCH_SIZE = 530
 PREDICT_THRESHOLD = 0.5
 
 # train relate
@@ -308,5 +310,5 @@ if __name__ == '__main__':
     task = main()
     task.predict_tfrecord(
         'datasets/tfrecords/valid.tfrecord',
-        'results/valid_result.json'
+        'results/temp_result.json'
     )

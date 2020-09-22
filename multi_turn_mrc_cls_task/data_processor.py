@@ -9,7 +9,6 @@ import tensorflow as tf
 from tokenizers import BertWordPieceTokenizer
 from common_data_utils import get_squad_json_template
 from common_data_utils import get_squad_json_paragraph_template
-from common_data_utils import get_squad_json_qas_item_template
 from common_data_utils import read_init_train_valid_examples
 from common_data_utils import extract_relations_from_init_train_table
 from sklearn.metrics import precision_recall_fscore_support
@@ -17,8 +16,8 @@ from sklearn.metrics import precision_recall_fscore_support
 INIT_TRAIN_TRAIN_PATH = '../common-datasets/init-train-train.json'
 INIT_TRAIN_VALID_PATH = '../common-datasets/init-train-valid.json'
 
-INIT_TRAIN_TRAIN_SQUAD_SAVE_PATH = './datasets/train.json'
-INIT_TRAIN_VALID_SQUAD_SAVE_PATH = './datasets/valid.json'
+INIT_TRAIN_TRAIN_SQUAD_SAVE_PATH = 'datasets/raw/train.json'
+INIT_TRAIN_VALID_SQUAD_SAVE_PATH = 'datasets/raw/valid.json'
 
 
 def convert_init_train_to_squad_format(init_train_path, save_path):
@@ -371,9 +370,12 @@ def postprocess_results(
         results_path,
         save_path
 ):
+    _, relations, _, _ = extract_relations_from_init_train_table('../common-datasets/init-train-table.txt')
+
     with tf.io.gfile.GFile(raw_data_path, mode='r') as reader:
-        raw_data = json.load(reader)['data']
+        raw_data = json.load(reader)
     reader.close()
+    paragraphs = raw_data['data'][0]['paragraphs']
 
     with gzip.open(features_path, mode='rb') as reader:
         features = pickle.load(reader)
@@ -383,8 +385,27 @@ def postprocess_results(
         results = json.load(reader)
     reader.close()
 
-    assert len(results) % 53 == 0
-    assert len(results) / 53 == len(raw_data[0]['paragraphs'])
+    # assert len(results) % 53 == 0
+    # assert len(results) / 53 == len(raw_data[0]['paragraphs'])
+
+    for index, paragraph in enumerate(paragraphs):
+        if index == 10:
+            break
+
+        result_pos = index * 53
+        for i in range(53):
+            result_index = result_pos + i
+            result = results[result_index]
+            prob = result['prob']
+            if prob >= 0.5:
+                paragraphs[index]['pred_sros'].append({
+                    'relation': relations[i]
+                })
+
+    raw_data['data'][0]['paragraphs'] = paragraphs
+    with tf.io.gfile.GFile(save_path, mode='w') as writer:
+        writer.write(json.dumps(raw_data, ensure_ascii=False, indent=2))
+    writer.close()
 
 
 def inference_train_results(
@@ -477,7 +498,7 @@ def inference_valid_results(
 
 if __name__ == '__main__':
     postprocess_results(
-        raw_data_path='datasets/valid.json',
+        raw_data_path='datasets/raw/valid.json',
         features_path='datasets/features/valid_features.pkl',
         results_path='results/temp_result.json',
         save_path='results/postprocessed/temp_results.json'
