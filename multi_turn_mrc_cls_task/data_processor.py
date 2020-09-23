@@ -9,7 +9,6 @@ import tensorflow as tf
 from tokenizers import BertWordPieceTokenizer
 from common_data_utils import get_squad_json_template
 from common_data_utils import get_squad_json_paragraph_template
-from common_data_utils import read_init_train_valid_examples
 from common_data_utils import extract_relations_from_init_train_table
 from sklearn.metrics import precision_recall_fscore_support
 
@@ -385,12 +384,10 @@ def postprocess_results(
         results = json.load(reader)
     reader.close()
 
-    # assert len(results) % 53 == 0
-    # assert len(results) / 53 == len(raw_data[0]['paragraphs'])
+    assert len(results) % 53 == 0
+    assert len(results) / 53 == len(paragraphs)
 
     for index, paragraph in enumerate(paragraphs):
-        if index == 10:
-            break
 
         result_pos = index * 53
         for i in range(53):
@@ -406,6 +403,35 @@ def postprocess_results(
     with tf.io.gfile.GFile(save_path, mode='w') as writer:
         writer.write(json.dumps(raw_data, ensure_ascii=False, indent=2))
     writer.close()
+
+
+def compute_prf(features_path, results_path):
+    with gzip.open(features_path, mode='rb') as reader:
+        features = pickle.load(reader)
+    reader.close()
+
+    with tf.io.gfile.GFile(results_path, mode='r') as reader:
+        results = json.load(reader)
+    reader.close()
+
+    origin_is_valid = []
+    pred_is_valid = []
+    for feature, result in zip(features, results):
+        origin_is_valid.append(feature.is_valid)
+        if result['prob'] >= 0.5:
+            pred_is_valid.append(1)
+        else:
+            pred_is_valid.append(0)
+
+    precision, recall, f_score, _ = precision_recall_fscore_support(
+        y_true=origin_is_valid,
+        y_pred=pred_is_valid,
+        average='binary'
+    )
+
+    print('precision: ', precision)
+    print('recall: ', recall)
+    print('f1-score: ', f_score)
 
 
 if __name__ == '__main__':
@@ -443,12 +469,40 @@ if __name__ == '__main__':
     #     is_train=False  # 这里一定要为 False, 因为 valid data 不需要随机的样本
     # )
 
-    generate_tfrecord_from_json_file(
-        input_file_path='datasets/raw/valid.json',
-        vocab_file_path='../vocabs/bert-base-chinese-vocab.txt',
-        output_save_path='datasets/tfrecords/for_infer/valid.tfrecord',
-        meta_save_path='datasets/tfrecords/for_infer/valid_meta.json',
-        features_save_path='datasets/features/for_infer/valid_features.pkl',
-        max_seq_len=165,
-        is_train=False  # 这里一定要为 False, 因为 valid data 不需要随机的样本
+    # generate_tfrecord_from_json_file(
+    #     input_file_path='datasets/raw/valid.json',
+    #     vocab_file_path='../vocabs/bert-base-chinese-vocab.txt',
+    #     output_save_path='datasets/tfrecords/for_infer/valid.tfrecord',
+    #     meta_save_path='datasets/tfrecords/for_infer/valid_meta.json',
+    #     features_save_path='datasets/features/for_infer/valid_features.pkl',
+    #     max_seq_len=165,
+    #     is_train=False  # 这里一定要为 False, 因为 valid data 不需要随机的样本
+    # )
+
+    # 处理训练数据的推断结果
+    # postprocess_results(
+    #     raw_data_path='datasets/raw/train.json',
+    #     features_path='datasets/features/for_infer/train_features.pkl',
+    #     results_path='results/for_infer/raw/train_results.json',
+    #     save_path='results/for_infer/postprocessed/train_results.json'
+    # )
+
+    # 处理验证集的推断结果
+    # postprocess_results(
+    #     raw_data_path='datasets/raw/valid.json',
+    #     features_path='datasets/features/for_infer/valid_features.pkl',
+    #     results_path='results/for_infer/raw/valid_results.json',
+    #     save_path='results/for_infer/postprocessed/valid_results.json'
+    # )
+
+    # 训练集 PRF
+    compute_prf(
+        features_path='datasets/features/for_infer/train_features.pkl',
+        results_path='results/for_infer/raw/train_results.json'
+    )
+
+    # 测试机 PRF
+    compute_prf(
+        features_path='datasets/features/for_infer/valid_features.pkl',
+        results_path='results/for_infer/raw/valid_results.json'
     )

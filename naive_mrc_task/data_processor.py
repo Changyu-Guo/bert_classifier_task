@@ -5,8 +5,9 @@
     Convert MRC data to squad format.
 """
 
-import copy
+import gzip
 import json
+import pickle
 import collections
 import tensorflow as tf
 from absl import logging
@@ -14,6 +15,14 @@ from absl import logging
 import tokenization
 from common_data_utils import get_squad_json_qas_item_template
 from common_data_utils import extract_examples_dict_from_relation_questions
+
+
+def convert_origin_data_for_train(origin_data_path, save_path):
+    pass
+
+
+def convert_origin_data_for_infer(origin_data_path, save_path):
+    pass
 
 
 def convert_last_step_results_for_train(results_path, save_path):
@@ -105,8 +114,12 @@ def convert_last_step_results_for_infer(results_path, save_path, step='first'):
         for sro_index, sro in enumerate(pred_sros):
             # relation 是一定存在的一个键
             relation_questions = relation_questions_dict[sro['relation']]
+
+            # 第一步推断使用第一个问题
             if step == 'first':
                 question = relation_questions.question_a
+
+            # 第二步推断使用第二个问题
             if step == 'second':
                 question = relation_questions.question_b.replace('subject', sro['subject'])
 
@@ -130,6 +143,7 @@ class SquadExample:
             self,
             qas_id,
             paragraph_index,
+            sro_index,
             question_text,
             doc_tokens,
             orig_answer_text=None,
@@ -140,9 +154,10 @@ class SquadExample:
         self.qas_id = qas_id
 
         # 在推断的过程中, 根据 paragraph_index 确定当前 example 所属的 context
-        # 接下来再根据 qas_id 确定当前 example 对应的 sro
+        # 接下来再根据 sro_index 确定当前 example 对应的 sro
         # 从而将答案填入相应的位置
         self.paragraph_index = paragraph_index
+        self.sro_index = sro_index
         self.question_text = question_text
         self.doc_tokens = doc_tokens
         self.orig_answer_text = orig_answer_text
@@ -191,7 +206,9 @@ class FeatureWriter:
     def __init__(self, filename, is_training):
 
         self.filename = filename
-        self._writer = tf.io.TFRecordWriter(filename)
+
+        options = tf.io.TFRecordOptions(compression_type='GZIP')
+        self._writer = tf.io.TFRecordWriter(filename, options=options)
 
         self.is_training = is_training
 
@@ -267,6 +284,7 @@ def read_squad_examples(input_file, is_training):
 
     with tf.io.gfile.GFile(input_file, "r") as reader:
         input_data = json.load(reader)["data"]
+    reader.close()
 
     def is_whitespace(c):
         if c == " " or c == "\t" or c == "\r" or c == "\n" or ord(c) == 0x202F:
@@ -295,6 +313,8 @@ def read_squad_examples(input_file, is_training):
         for qa in paragraph["qas"]:
             qas_id = qa["id"]
             question_text = qa["question"]
+            sro_index = qa['sro_index']
+
             start_position = None
             end_position = None
             orig_answer_text = None
@@ -331,6 +351,7 @@ def read_squad_examples(input_file, is_training):
             example = SquadExample(
                 qas_id=qas_id,
                 paragraph_index=paragraph_index,
+                sro_index=sro_index,
                 question_text=question_text,
                 doc_tokens=doc_tokens,
                 orig_answer_text=orig_answer_text,
@@ -486,7 +507,7 @@ def convert_examples_to_features(
             if is_training:
                 output_fn(feature)
             else:
-                output_fn(feature, is_padding=False)
+                output_fn(feature)
 
             unique_id += 1
 
@@ -512,7 +533,9 @@ def convert_examples_to_features(
 def generate_tfrecord_from_json_file(
         input_file_path,
         vocab_file_path,
-        output_file_path,
+        tfrecord_save_path,
+        meta_save_path,
+        features_save_path,
         max_seq_len=384,
         max_query_len=64,
         doc_stride=128,
@@ -525,7 +548,7 @@ def generate_tfrecord_from_json_file(
     )
 
     tokenizer = tokenization.FullTokenizer(vocab_file=vocab_file_path)
-    writer = FeatureWriter(filename=output_file_path, is_training=is_train)
+    writer = FeatureWriter(filename=tfrecord_save_path, is_training=is_train)
 
     features = []
 
@@ -550,12 +573,58 @@ def generate_tfrecord_from_json_file(
         'max_query_len': max_query_len,
         'doc_stride': doc_stride
     }
+    writer.close()
+
+    # save meta
+    with tf.io.gfile.GFile(meta_save_path, mode='w') as writer:
+        writer.write(json.dumps(meta_data, ensure_ascii=False, indent=2) + '\n')
+    writer.close()
+
+    # save features
+    with gzip.open(features_save_path, mode='wb') as writer:
+        pickle.dump(features, writer, protocol=pickle.HIGHEST_PROTOCOL)
+    writer.close()
 
     return meta_data
 
 
 if __name__ == '__main__':
-    read_squad_examples(
-        input_file='datasets/raw/for_infer/first_step/valid_results.json',
-        is_training=False
+    # 将训练数据集的结果转为用于推断的数据
+    # convert_last_step_results_for_infer(
+    #     results_path='../multi_turn_mrc_cls_task/results/for_infer/postprocessed/train_results.json',
+    #     save_path='datasets/raw/for_infer/first_step/train.json',
+    #     step='first'
+    # )
+
+    # 将验证数据集的结果转为用于推断的数据
+    # convert_last_step_results_for_infer(
+    #     results_path='../multi_turn_mrc_cls_task/results/for_infer/postprocessed/valid_results.json',
+    #     save_path='datasets/raw/for_infer/first_step/valid.json',
+    #     step='first'
+    # )
+
+    # 为推断生成训练 tfrecord
+    # generate_tfrecord_from_json_file(
+    #     input_file_path='datasets/raw/for_infer/first_step/train.json',
+    #     vocab_file_path='../vocabs/bert-base-chinese-vocab.txt',
+    #     tfrecord_save_path='datasets/tfrecords/for_infer/first_step/train.tfrecord',
+    #     meta_save_path='datasets/tfrecords/for_infer/first_step/train_meta.json',
+    #     features_save_path='datasets/features/for_infer/first_step/train_features.pkl',
+    #     max_seq_len=165,
+    #     max_query_len=45,
+    #     doc_stride=128,
+    #     is_train=False
+    # )
+
+    # 为推断生成验证 tfrecord
+    generate_tfrecord_from_json_file(
+        input_file_path='datasets/raw/for_infer/first_step/valid.json',
+        vocab_file_path='../vocabs/bert-base-chinese-vocab.txt',
+        tfrecord_save_path='datasets/tfrecords/for_infer/first_step/valid.tfrecord',
+        meta_save_path='datasets/tfrecords/for_infer/first_step/valid_meta.json',
+        features_save_path='datasets/features/for_infer/first_step/valid_features.pkl',
+        max_seq_len=165,
+        max_query_len=45,
+        doc_stride=128,
+        is_train=False
     )

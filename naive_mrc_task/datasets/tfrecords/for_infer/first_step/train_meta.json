@@ -1,0 +1,6 @@
+{
+  "data_size": 29551,
+  "max_seq_len": 165,
+  "max_query_len": 45,
+  "doc_stride": 128
+}
