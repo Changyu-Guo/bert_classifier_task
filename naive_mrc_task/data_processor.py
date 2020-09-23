@@ -16,6 +16,14 @@ from common_data_utils import extract_examples_dict_from_relation_questions
 
 
 def convert_last_step_results_for_train(results_path, save_path):
+    """
+        将上一步的推断结果转换为本步骤训练需要的数据
+        在训练步骤中，所有问题都存在答案
+
+        对于每个 context, 对应多个 relation
+        每个 relation 都有两个问答
+        所以当前 context 的 qas 中会有 2 * relation_num 个条目
+    """
     relation_questions_dict = extract_examples_dict_from_relation_questions(
         init_train_table_path='../common-datasets/init-train-table.txt',
         relation_questions_path='../common-datasets/relation_questions.txt'
@@ -28,24 +36,71 @@ def convert_last_step_results_for_train(results_path, save_path):
     paragraphs = results['data'][0]['paragraphs']
 
     _id = 0
-    for paragraph in paragraphs:
+    for paragraph_index, paragraph in enumerate(paragraphs):
+        context = paragraph['context']
         pred_sros = paragraph['pred_sros']
         for sro in pred_sros:
-            relation_question = relation_questions_dict[sro['relation']]
-            question_a = relation_question.question_a
+            s = sro['subject']
+            o = sro['object']
 
-            squad_json_qas_item = {
-                'question': question_a,
-                'relation': sro['relation'],  # relation 用于推断
-                'id': 'id_' + str(_id)
-            }
+            s_start_pos = context.find(s)
+            o_start_pos = context.find(o)
+
+            relation_questions = relation_questions_dict[sro['relation']]
+            question_a = relation_questions.question_a
+            question_b = relation_questions.question_b.replace('subject', s)
+
+            squad_json_qas_item = get_squad_json_qas_item_template(
+                question=question_a,
+                answers=[{
+                    'text': s,
+                    'answer_start': s_start_pos
+                }],
+                qas_id='id_' + str(_id)
+            )
             _id += 1
+            paragraphs[paragraph_index]['qas'].append(squad_json_qas_item)
 
-            
+            squad_json_qas_item = get_squad_json_qas_item_template(
+                question=question_b,
+                answers=[{
+                    'text': o,
+                    'answer_start': o_start_pos
+                }],
+                qas_id='id_' + str(_id)
+            )
+            _id += 1
+            paragraphs[paragraph_index]['qas'].append(squad_json_qas_item)
+
+    results['data'][0]['paragraphs'] = paragraphs
+    with tf.io.gfile.GFile(save_path, mode='w') as writer:
+        writer.write(json.dumps(results, ensure_ascii=False, indent=2))
+    writer.close()
 
 
-def convert_last_step_results_for_infer(results_path, save_path):
-    pass
+def convert_last_step_results_for_infer(results_path, save_path, step='first'):
+
+    if step not in ['first', 'second']:
+        raise ValueError('step must be first or second')
+
+    relation_questions_dict = extract_examples_dict_from_relation_questions(
+        init_train_table_path='../common-datasets/init-train-table.txt',
+        relation_questions_path='../common-datasets/relation_questions.txt'
+    )
+
+    with tf.io.gfile.GFile(results_path, mode='r') as reader:
+        results = json.load(reader)
+    reader.close()
+
+    paragraphs = results['data'][0]['paragraphs']
+
+    qas_id = 0
+    for paragraph_index, paragraph in enumerate(paragraphs):
+        context = paragraph['context']
+        pred_sros = paragraph['pred_sros']
+
+        for sro_index, sro in enumerate(pred_sros):
+            pass
 
 
 class SquadExample:
