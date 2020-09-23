@@ -265,7 +265,7 @@ TENSORBOARD_LOG_DIR = 'logs'
 
 VOCAB_FILE_PATH = '../vocabs/bert-base-chinese-vocab.txt'
 MAX_SEQ_LEN = 165
-PREDICT_BATCH_SIZE = 530
+PREDICT_BATCH_SIZE = 5300
 PREDICT_THRESHOLD = 0.5
 
 # train relate
@@ -302,7 +302,7 @@ def main():
         get_model_params(),
         use_pretrain=True,
         batch_size=48,
-        inference_model_dir='saved_models/version_1'
+        inference_model_dir='gs://leeyu-dataset-public'
     )
     return task
 
