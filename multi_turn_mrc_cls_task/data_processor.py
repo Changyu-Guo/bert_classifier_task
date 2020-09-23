@@ -408,98 +408,47 @@ def postprocess_results(
     writer.close()
 
 
-def inference_train_results(
-        batched_origin_is_valid,
-        batched_pred_is_valid,
-        results_save_path
-):
-    precision, recall, f1, _ = precision_recall_fscore_support(
-        batched_origin_is_valid, batched_pred_is_valid, average='micro'
-    )
-    print(precision)
-    print(recall)
-    print(f1)
-
-    # origin valid data
-    init_train_examples = read_init_train_valid_examples('datasets/raw_datasets/init-train-train.json')
-    _, relations, _, _ = extract_relations_from_init_train_table()
-
-    # 每一条 example 都对应一个原始的 init train example
-    for example_index, example in enumerate(init_train_examples):
-
-        # 当前 example / feature 对应的原始 valid data index
-        init_train_example_index = example_index
-
-        # 构建 pred_sros 键
-        if not init_train_examples[init_train_example_index].get('pred_sros'):
-            init_train_examples[init_train_example_index]['pred_sros'] = []
-
-        # 获取当前 init train example 对应的一组推断结果
-        current_pred_indices = batched_pred_is_valid[init_train_example_index]
-
-        # 将 53 个预测结果对应到 relation
-        # 然后添加到对应的 init train example 中
-        for i in range(len(current_pred_indices)):
-            if current_pred_indices[i] == 1:
-                init_train_examples[init_train_example_index]['pred_sros'].append(
-                    {
-                        'relation': relations[i]
-                    }
-                )
-
-    with tf.io.gfile.GFile(results_save_path, mode='w') as writer:
-        writer.write(json.dumps(init_train_examples, ensure_ascii=False, indent=2))
-    writer.close()
-
-
-def inference_valid_results(
-        batched_origin_is_valid,
-        batched_pred_is_valid,
-        results_save_path
-):
-    precision, recall, f1, _ = precision_recall_fscore_support(
-        batched_origin_is_valid, batched_pred_is_valid, average='micro'
-    )
-    print(precision)
-    print(recall)
-    print(f1)
-
-    # origin valid data
-    init_train_examples = read_init_train_valid_examples('datasets/raw_datasets/init-train-valid.json')
-    _, relations, _, _ = extract_relations_from_init_train_table()
-
-    # 每一条 example 都对应一个原始的 init train example
-    for example_index, example in enumerate(init_train_examples):
-
-        # 当前 example / feature 对应的原始 valid data index
-        init_train_example_index = example_index
-
-        # 构建 pred_sros 键
-        if not init_train_examples[init_train_example_index].get('pred_sros'):
-            init_train_examples[init_train_example_index]['pred_sros'] = []
-
-        # 获取当前 init train example 对应的一组推断结果
-        current_pred_indices = batched_pred_is_valid[init_train_example_index]
-
-        # 将 53 个预测结果对应到 relation
-        # 然后添加到对应的 init train example 中
-        for i in range(len(current_pred_indices)):
-            if current_pred_indices[i] == 1:
-                init_train_examples[init_train_example_index]['pred_sros'].append(
-                    {
-                        'relation': relations[i]
-                    }
-                )
-
-    with tf.io.gfile.GFile(results_save_path, mode='w') as writer:
-        writer.write(json.dumps(init_train_examples, ensure_ascii=False, indent=2))
-    writer.close()
-
-
 if __name__ == '__main__':
-    postprocess_results(
-        raw_data_path='datasets/raw/valid.json',
-        features_path='datasets/features/valid_features.pkl',
-        results_path='results/temp_result.json',
-        save_path='results/postprocessed/temp_results.json'
+    # generate train tfrecord for train
+    # generate_tfrecord_from_json_file(
+    #     input_file_path='datasets/raw/train.json',
+    #     vocab_file_path='../vocabs/bert-base-chinese-vocab.txt',
+    #     output_save_path='datasets/tfrecords/for_train/train.tfrecord',
+    #     meta_save_path='datasets/tfrecords/for_train/train_meta.json',
+    #     features_save_path='datasets/features/for_train/train_features.pkl',
+    #     max_seq_len=165,
+    #     is_train=True  # 含有随机的样本, 用于训练
+    # )
+
+    # generate train tfrecord for infer
+    # generate_tfrecord_from_json_file(
+    #     input_file_path='datasets/raw/train.json',
+    #     vocab_file_path='../vocabs/bert-base-chinese-vocab.txt',
+    #     output_save_path='datasets/tfrecords/for_infer/train.tfrecord',
+    #     meta_save_path='datasets/tfrecords/for_infer/train_meta.json',
+    #     features_save_path='datasets/features/for_infer/train_features.pkl',
+    #     max_seq_len=165,
+    #     is_train=False  # infer 的过程中不需要使用随机的样本, 就对固定的 53 个问题进行推断
+    # )
+
+    # generate valid tfrecord for train and infer
+    # (valid data 无论是 train 还是 infer 都是一样的)
+    # generate_tfrecord_from_json_file(
+    #     input_file_path='datasets/raw/valid.json',
+    #     vocab_file_path='../vocabs/bert-base-chinese-vocab.txt',
+    #     output_save_path='datasets/tfrecords/for_train/valid.tfrecord',
+    #     meta_save_path='datasets/tfrecords/for_train/valid_meta.json',
+    #     features_save_path='datasets/features/for_train/valid_features.pkl',
+    #     max_seq_len=165,
+    #     is_train=False  # 这里一定要为 False, 因为 valid data 不需要随机的样本
+    # )
+
+    generate_tfrecord_from_json_file(
+        input_file_path='datasets/raw/valid.json',
+        vocab_file_path='../vocabs/bert-base-chinese-vocab.txt',
+        output_save_path='datasets/tfrecords/for_infer/valid.tfrecord',
+        meta_save_path='datasets/tfrecords/for_infer/valid_meta.json',
+        features_save_path='datasets/features/for_infer/valid_features.pkl',
+        max_seq_len=165,
+        is_train=False  # 这里一定要为 False, 因为 valid data 不需要随机的样本
     )

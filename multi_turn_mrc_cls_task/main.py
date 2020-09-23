@@ -6,6 +6,10 @@ import json
 import tensorflow as tf
 from absl import logging
 
+import sys
+
+sys.path.append('..')
+
 from optimization import create_optimizer
 from utils.distribu_utils import get_distribution_strategy
 from utils.distribu_utils import get_strategy_scope
@@ -110,7 +114,6 @@ class MultiTurnMRCCLSTask:
         #   3. load checkpoint
         #   4. compile
         with get_strategy_scope(self.distribution_strategy):
-
             model = create_model(
                 is_train=True,
                 use_pretrain=self.use_pretrain
@@ -222,15 +225,13 @@ class MultiTurnMRCCLSTask:
             batch_probs = model_output['probs']
 
             for result in self.generate_predict_item(
-                unique_ids=unique_ids,
-                example_indices=example_indices,
-                batch_probs=batch_probs
+                    unique_ids=unique_ids,
+                    example_indices=example_indices,
+                    batch_probs=batch_probs
             ):
                 all_results.append(result)
 
             print(index)
-
-            break
 
         with tf.io.gfile.GFile(save_path, mode='w') as writer:
             writer.write(json.dumps(all_results, ensure_ascii=False, indent=2) + '\n')
@@ -308,7 +309,15 @@ def main():
 
 if __name__ == '__main__':
     task = main()
+
+    # 推断 valid
     task.predict_tfrecord(
-        'datasets/tfrecords/valid.tfrecord',
-        'results/temp_result.json'
+        tfrecord_path='datasets/tfrecords/for_infer/valid.tfrecord',
+        save_path='results/raw/for_infer/valid_results.json'
+    )
+
+    # 推断 train
+    task.predict_tfrecord(
+        tfrecord_path='datasets/tfrecords/for_infer/train.tfrecord',
+        save_path='results/raw/for_infer/train_results.json'
     )

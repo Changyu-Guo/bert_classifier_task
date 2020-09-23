@@ -5,12 +5,13 @@
     Convert MRC data to squad format.
 """
 
+import copy
 import json
 import collections
 import tensorflow as tf
+from absl import logging
+
 import tokenization
-from common_data_utils import read_init_train_train_examples
-from common_data_utils import read_init_train_valid_examples
 from common_data_utils import get_squad_json_qas_item_template
 from common_data_utils import extract_examples_dict_from_relation_questions
 
@@ -96,11 +97,31 @@ def convert_last_step_results_for_infer(results_path, save_path, step='first'):
 
     qas_id = 0
     for paragraph_index, paragraph in enumerate(paragraphs):
-        context = paragraph['context']
+
+        # 在 first step 中使用 relation 推断 subject
+        # 在 second step 中使用 relation 和 subject 推断 object
         pred_sros = paragraph['pred_sros']
 
         for sro_index, sro in enumerate(pred_sros):
-            pass
+            # relation 是一定存在的一个键
+            relation_questions = relation_questions_dict[sro['relation']]
+            if step == 'first':
+                question = relation_questions.question_a
+            if step == 'second':
+                question = relation_questions.question_b.replace('subject', sro['subject'])
+
+            squad_json_qas_item = {
+                'question': question,
+                'id': 'id_' + str(qas_id),
+                'sro_index': sro_index
+            }
+            qas_id += 1
+            paragraphs[paragraph_index]['qas'].append(squad_json_qas_item)
+
+    results['data'][0]['paragraphs'] = paragraphs
+    with tf.io.gfile.GFile(save_path, mode='w') as writer:
+        writer.write(json.dumps(results, ensure_ascii=False, indent=2))
+    writer.close()
 
 
 class SquadExample:
@@ -108,6 +129,7 @@ class SquadExample:
     def __init__(
             self,
             qas_id,
+            paragraph_index,
             question_text,
             doc_tokens,
             orig_answer_text=None,
@@ -116,6 +138,11 @@ class SquadExample:
             is_impossible=False
     ):
         self.qas_id = qas_id
+
+        # 在推断的过程中, 根据 paragraph_index 确定当前 example 所属的 context
+        # 接下来再根据 qas_id 确定当前 example 对应的 sro
+        # 从而将答案填入相应的位置
+        self.paragraph_index = paragraph_index
         self.question_text = question_text
         self.doc_tokens = doc_tokens
         self.orig_answer_text = orig_answer_text
@@ -128,7 +155,11 @@ class Feature:
 
     def __init__(
             self,
+
+            # 用于和推断的结果相匹配
             unique_id,
+
+            # 用于和 example 相匹配
             example_index,
             doc_span_index,
             tokens,
@@ -243,66 +274,71 @@ def read_squad_examples(input_file, is_training):
         return False
 
     examples = []
-    for entry in input_data:
-        for paragraph in entry["paragraphs"]:
-            paragraph_text = paragraph["context"]
-            doc_tokens = []
-            char_to_word_offset = []
-            prev_is_whitespace = True
-            for c in paragraph_text:
-                if is_whitespace(c):
-                    prev_is_whitespace = True
+    paragraphs = input_data[0]['paragraphs']
+    for paragraph_index, paragraph in enumerate(paragraphs):
+        paragraph_text = paragraph["context"]
+        doc_tokens = []
+        char_to_word_offset = []
+        prev_is_whitespace = True
+        for c in paragraph_text:
+            if is_whitespace(c):
+                prev_is_whitespace = True
+            else:
+                if prev_is_whitespace:
+                    doc_tokens.append(c)
                 else:
-                    if prev_is_whitespace:
-                        doc_tokens.append(c)
-                    else:
-                        doc_tokens[-1] += c
-                    prev_is_whitespace = False
-                char_to_word_offset.append(len(doc_tokens) - 1)
+                    doc_tokens[-1] += c
+                prev_is_whitespace = False
+            char_to_word_offset.append(len(doc_tokens) - 1)
 
-            for qa in paragraph["qas"]:
-                qas_id = qa["id"]
-                question_text = qa["question"]
-                start_position = None
-                end_position = None
-                orig_answer_text = None
-                is_impossible = False
-                if is_training:
+        # 每个 QA 都构成一个 example
+        for qa in paragraph["qas"]:
+            qas_id = qa["id"]
+            question_text = qa["question"]
+            start_position = None
+            end_position = None
+            orig_answer_text = None
+            is_impossible = False
 
-                    if (len(qa["answers"]) != 1) and (not is_impossible):
-                        raise ValueError(
-                            "For training, each question should have exactly 1 answer.")
-                    if not is_impossible:
-                        answer = qa["answers"][0]
-                        orig_answer_text = answer["text"]
-                        answer_offset = answer["answer_start"]
-                        answer_length = len(orig_answer_text)
-                        start_position = char_to_word_offset[answer_offset]
-                        end_position = char_to_word_offset[answer_offset + answer_length - 1]
-                        actual_text = " ".join(doc_tokens[start_position:(end_position + 1)])
-                        cleaned_answer_text = " ".join(
-                            tokenization.whitespace_tokenize(orig_answer_text))
-                        if actual_text.find(cleaned_answer_text) == -1:
-                            logging.warning(
-                                "Could not find answer: '%s' vs. '%s'",
-                                actual_text, cleaned_answer_text
-                            )
-                            continue
-                    else:
-                        start_position = -1
-                        end_position = -1
-                        orig_answer_text = ""
+            # 这里需要注意
+            # train data 有 answer
+            if is_training:
 
-                example = SquadExample(
-                    qas_id=qas_id,
-                    question_text=question_text,
-                    doc_tokens=doc_tokens,
-                    orig_answer_text=orig_answer_text,
-                    start_position=start_position,
-                    end_position=end_position,
-                    is_impossible=is_impossible
-                )
-                examples.append(example)
+                if (len(qa["answers"]) != 1) and (not is_impossible):
+                    raise ValueError(
+                        "For training, each question should have exactly 1 answer.")
+                if not is_impossible:
+                    answer = qa["answers"][0]
+                    orig_answer_text = answer["text"]
+                    answer_offset = answer["answer_start"]
+                    answer_length = len(orig_answer_text)
+                    start_position = char_to_word_offset[answer_offset]
+                    end_position = char_to_word_offset[answer_offset + answer_length - 1]
+                    actual_text = " ".join(doc_tokens[start_position:(end_position + 1)])
+                    cleaned_answer_text = " ".join(
+                        tokenization.whitespace_tokenize(orig_answer_text))
+                    if actual_text.find(cleaned_answer_text) == -1:
+                        logging.warning(
+                            "Could not find answer: '%s' vs. '%s'",
+                            actual_text, cleaned_answer_text
+                        )
+                        continue
+                else:
+                    start_position = -1
+                    end_position = -1
+                    orig_answer_text = ""
+
+            example = SquadExample(
+                qas_id=qas_id,
+                paragraph_index=paragraph_index,
+                question_text=question_text,
+                doc_tokens=doc_tokens,
+                orig_answer_text=orig_answer_text,
+                start_position=start_position,
+                end_position=end_position,
+                is_impossible=is_impossible
+            )
+            examples.append(example)
 
     return examples
 
@@ -432,7 +468,7 @@ def convert_examples_to_features(
                 start_position = 0
                 end_position = 0
 
-            feature = InputFeatures(
+            feature = Feature(
                 unique_id=unique_id,
                 example_index=example_index,
                 doc_span_index=doc_span_index,
@@ -454,21 +490,21 @@ def convert_examples_to_features(
 
             unique_id += 1
 
-    if not is_training and feature:
-        assert batch_size
-        num_padding = 0
-        num_examples = unique_id - base_id
-        if unique_id % batch_size != 0:
-            num_padding = batch_size - (num_examples % batch_size)
-        logging.info("Adding padding examples to make sure no partial batch.")
-        logging.info("Adds %d padding examples for inference.", num_padding)
-        dummy_feature = copy.deepcopy(feature)
-        for _ in range(num_padding):
-            dummy_feature.unique_id = unique_id
-
-            # Run callback
-            output_fn(feature, is_padding=True)
-            unique_id += 1
+    # if not is_training and feature:
+    #     assert batch_size
+    #     num_padding = 0
+    #     num_examples = unique_id - base_id
+    #     if unique_id % batch_size != 0:
+    #         num_padding = batch_size - (num_examples % batch_size)
+    #     logging.info("Adding padding examples to make sure no partial batch.")
+    #     logging.info("Adds %d padding examples for inference.", num_padding)
+    #     dummy_feature = copy.deepcopy(feature)
+    #     for _ in range(num_padding):
+    #         dummy_feature.unique_id = unique_id
+    #
+    #         # Run callback
+    #         output_fn(feature, is_padding=True)
+    #         unique_id += 1
 
     return unique_id - base_id
 
@@ -479,23 +515,32 @@ def generate_tfrecord_from_json_file(
         output_file_path,
         max_seq_len=384,
         max_query_len=64,
-        doc_stride=128
+        doc_stride=128,
+        is_train=True
 ):
+    # 从原始数据中读取所有的 example
     examples = read_squad_examples(
         input_file=input_file_path,
-        is_training=is_training
+        is_training=is_train
     )
 
     tokenizer = tokenization.FullTokenizer(vocab_file=vocab_file_path)
-    writer = FeatureWriter(filename=output_file_path, is_training=True)
+    writer = FeatureWriter(filename=output_file_path, is_training=is_train)
+
+    features = []
+
+    def _append_feature(feature):
+        features.append(feature)
+        writer.process_feature(feature)
+
     convert_examples_to_features(
         examples=examples,
         tokenizer=tokenizer,
         max_seq_length=max_seq_len,
         doc_stride=doc_stride,
         max_query_length=max_query_len,
-        is_training=True,
-        output_fn=writer.process_feature,
+        is_training=is_train,
+        output_fn=_append_feature,
         batch_size=None
     )
 
@@ -509,59 +554,8 @@ def generate_tfrecord_from_json_file(
     return meta_data
 
 
-def convert_inference_results_for_second_step(inference_results_path, convert_results_save_path):
-    relation_questions_dict = extract_examples_from_relation_questions()
-    with tf.io.gfile.GFile(inference_results_path, mode='r') as reader:
-        input_data = json.load(reader)['data']
-    reader.close()
-
-    _id = 0
-    for i in range(len(input_data[0]['paragraphs'])):
-        item = input_data[0]['paragraphs'][i]
-        pred_relations = item['pred_relations']
-
-        qas = []
-
-        for relation in pred_relations:
-            _subject = relation['subject']
-            relation_question = relation_questions_dict[relation['relation']]
-            relation_question_a = relation_question.relation_question_b.replace('subject', _subject)
-
-            qas_item = {
-                'question': relation_question_a,
-                'relation': relation['relation'],
-                'subject': _subject,
-                'id': 'id_' + str(_id)
-            }
-            qas.append(qas_item)
-            _id += 1
-
-        input_data[0]['paragraphs'][i]['qas'] = qas
-
-        if (i + 1) % 1000 == 0:
-            print(i + 1)
-
-    input_data = {
-        'data': input_data
-    }
-    with tf.io.gfile.GFile(convert_results_save_path, mode='w') as writer:
-        writer.write(json.dumps(input_data, ensure_ascii=False, indent=2))
-    writer.close()
-
-
-def mrc_data_processor_main():
-    convert_inference_results_for_second_step(
-        inference_results_path=first_step_inference_train_save_path,
-        convert_results_save_path=second_step_train_save_path
-    )
-    # convert_inference_results_for_second_step(
-    #     inference_results_path=first_step_inference_valid_save_path,
-    #     convert_results_save_path=second_step_valid_save_path
-    # )
-
-
 if __name__ == '__main__':
-    convert_last_step_results(
-        results_path='../multi_turn_mrc_cls_task/results/postprocessed/temp_results.json',
-        save_path='datasets/raw/temp_valid.json'
+    read_squad_examples(
+        input_file='datasets/raw/for_infer/temp_valid.json',
+        is_training=False
     )
