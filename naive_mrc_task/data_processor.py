@@ -556,6 +556,6 @@ def generate_tfrecord_from_json_file(
 
 if __name__ == '__main__':
     read_squad_examples(
-        input_file='datasets/raw/for_infer/temp_valid.json',
+        input_file='datasets/raw/for_infer/first_step/valid_results.json',
         is_training=False
     )
