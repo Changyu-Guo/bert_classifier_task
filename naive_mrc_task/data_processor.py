@@ -15,6 +15,7 @@ from absl import logging
 import tokenization
 from common_data_utils import get_squad_json_qas_item_template
 from common_data_utils import extract_examples_dict_from_relation_questions
+from common_data_utils import read_init_train_train_examples
 
 
 def convert_origin_data_for_train(origin_data_path, save_path):
@@ -25,10 +26,10 @@ def convert_origin_data_for_infer(origin_data_path, save_path):
     pass
 
 
-def convert_last_step_results_for_train(results_path, save_path):
+def convert_last_step_results_for_train(results_path, save_path, step='first'):
     """
         将上一步的推断结果转换为本步骤训练需要的数据
-        在训练步骤中，所有问题都存在答案
+        由于使用的是上一步骤的推断结果，因此存在没有答案的情况
 
         对于每个 context, 对应多个 relation
         每个 relation 都有两个问答
@@ -48,7 +49,16 @@ def convert_last_step_results_for_train(results_path, save_path):
     _id = 0
     for paragraph_index, paragraph in enumerate(paragraphs):
         context = paragraph['context']
+
+        origin_sros = paragraph['origin_sros']
+        origin_relations = set([sro['relation'] for sro in origin_sros])
+
         pred_sros = paragraph['pred_sros']
+        pred_relations = set([sro['relation'] for sro in pred_sros])
+
+        print(origin_relations)
+        print(pred_relations)
+
         for sro in pred_sros:
             s = sro['subject']
             o = sro['object']
@@ -617,14 +627,25 @@ if __name__ == '__main__':
     # )
 
     # 为推断生成验证 tfrecord
-    generate_tfrecord_from_json_file(
-        input_file_path='datasets/raw/for_infer/first_step/valid.json',
-        vocab_file_path='../vocabs/bert-base-chinese-vocab.txt',
-        tfrecord_save_path='datasets/tfrecords/for_infer/first_step/valid.tfrecord',
-        meta_save_path='datasets/tfrecords/for_infer/first_step/valid_meta.json',
-        features_save_path='datasets/features/for_infer/first_step/valid_features.pkl',
-        max_seq_len=165,
-        max_query_len=45,
-        doc_stride=128,
-        is_train=False
+    # generate_tfrecord_from_json_file(
+    #     input_file_path='datasets/raw/for_infer/first_step/valid.json',
+    #     vocab_file_path='../vocabs/bert-base-chinese-vocab.txt',
+    #     tfrecord_save_path='datasets/tfrecords/for_infer/first_step/valid.tfrecord',
+    #     meta_save_path='datasets/tfrecords/for_infer/first_step/valid_meta.json',
+    #     features_save_path='datasets/features/for_infer/first_step/valid_features.pkl',
+    #     max_seq_len=165,
+    #     max_query_len=45,
+    #     doc_stride=128,
+    #     is_train=False
+    # )
+
+    # 将上一步骤训练数据的推断结果转为当前步骤的训练数据（含无答案问题）
+    # convert_last_step_results_for_train(
+    #     results_path='../multi_turn_mrc_cls_task/results/for_infer/postprocessed/train_results.json',
+    #     save_path='datasets/raw/for_train/last_step/train.json'
+    # )
+    # 将上一步骤验证数据的推断结果转为当前步骤的验证数据（含无答案结果）
+    convert_last_step_results_for_train(
+        results_path='../multi_turn_mrc_cls_task/results/for_infer/postprocessed/valid_results.json',
+        save_path='datasets/raw/for_train/last_step/valid.json'
     )
