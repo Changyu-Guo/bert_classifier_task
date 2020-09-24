@@ -2,18 +2,17 @@
 
 import os
 import json
-import collections
 
 import tensorflow as tf
 from absl import logging
 
-import tokenization
-from naive_mrc_task.create_model import create_mrc_model
+from naive_mrc_task.create_model import create_model
 from optimization import create_optimizer
 from utils.distribu_utils import get_distribution_strategy
 from utils.distribu_utils import get_strategy_scope
 from naive_mrc_task.input_pipeline import read_and_batch_from_tfrecord
 from naive_mrc_task.input_pipeline import map_data_to_model
+from naive_mrc_task.input_pipeline import map_data_to_model_infer
 
 
 class MRCTask:
@@ -117,7 +116,7 @@ class MRCTask:
         #   4. compile
         with get_strategy_scope(self.distribution_strategy):
 
-            model = create_mrc_model(
+            model = create_model(
                 max_seq_len=self.max_seq_len,
                 is_train=True,
                 use_pretrain=self.use_pretrain
@@ -212,7 +211,7 @@ class MRCTask:
         )
 
         with get_strategy_scope(self.distribution_strategy):
-            model = create_mrc_model(
+            model = create_model(
                 max_seq_len=self.max_seq_len,
                 is_train=False, use_pretrain=False
             )
@@ -222,18 +221,19 @@ class MRCTask:
                     self.inference_model_dir
                 )
             )
-            logging.info('Restore checkpoint from {}'.format(
-                tf.train.latest_checkpoint(self.inference_model_dir)
+            logging.info('Restore checkpoint {} from {}'.format(
+                tf.train.latest_checkpoint(self.inference_model_dir),
+                self.inference_model_dir
             ))
 
         # predict
         all_results = []
-        for index, data in dataset:
+        for index, data in enumerate(dataset):
             # (batch_size, 1)
             unique_ids = data.pop('unique_ids')
             example_indices = data.pop('example_indices')
             # (batch_size, seq_len)
-            model_output = model.predict(map_data_to_model(data))
+            model_output = model.predict(map_data_to_model_infer(data))
 
             start_logits = model_output['start_logits']
             end_logits = model_output['end_logits']
@@ -290,7 +290,7 @@ VOCAB_FILE_PATH = '../vocabs/bert-base-chinese-vocab.txt'
 MAX_SEQ_LEN = 165
 MAX_QUERY_LEN = 45
 DOC_STRIDE = 128
-PREDICT_BATCH_SIZE = 1000
+PREDICT_BATCH_SIZE = 64
 
 # train relate
 LEARNING_RATE = 3e-5
@@ -334,3 +334,9 @@ def main():
 
 if __name__ == '__main__':
     task = main()
+
+    # 推断上一步骤的验证集结果
+    task.predict_tfrecord(
+        tfrecord_path='datasets/tfrecords/for_infer/first_step/valid.tfrecord',
+        save_path='results/for_infer/raw/first_step/valid_results.json'
+    )

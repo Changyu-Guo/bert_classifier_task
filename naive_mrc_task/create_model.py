@@ -4,7 +4,7 @@ import tensorflow as tf
 from transformers import BertConfig, TFBertModel
 
 
-def create_mrc_model(max_seq_len, is_train=True, use_pretrain=False):
+def create_model(max_seq_len, is_train=True, use_pretrain=False):
 
     # 输入
     inputs_ids = tf.keras.Input((max_seq_len,), name='inputs_ids', dtype=tf.int64)
@@ -27,10 +27,14 @@ def create_mrc_model(max_seq_len, is_train=True, use_pretrain=False):
     # (batch_size, seq_len, hidden_size)
     embedding = bert_output[0]
 
+    # (batch_size, seq_len, 1)
     start_logits = tf.keras.layers.Dense(1, use_bias=False)(embedding)
+    # (batch_size, seq_len)
     start_logits = tf.keras.layers.Flatten(name='start_logits')(start_logits)
 
+    # (batch_size, seq_len, 1)
     end_logits = tf.keras.layers.Dense(1, use_bias=False)(embedding)
+    # (batch_size, seq_len)
     end_logits = tf.keras.layers.Flatten(name='end_logits')(end_logits)
 
     model = tf.keras.Model(

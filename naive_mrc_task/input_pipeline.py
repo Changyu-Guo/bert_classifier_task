@@ -62,3 +62,14 @@ def map_data_to_model(data):
     }
 
     return x, y
+
+
+def map_data_to_model_infer(data):
+
+    x = {
+        'inputs_ids': data['inputs_ids'],
+        'inputs_mask': data['inputs_mask'],
+        'segment_ids': data['segment_ids']
+    }
+
+    return x
