@@ -1,10 +1,13 @@
 # -*- coding: utf - 8 -*-
 
 import os
+import sys
 import json
 
 import tensorflow as tf
 from absl import logging
+
+sys.path.append('..')
 
 from naive_mrc_task.create_model import create_model
 from optimization import create_optimizer
