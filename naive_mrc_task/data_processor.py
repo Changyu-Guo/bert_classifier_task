@@ -5,6 +5,7 @@
     Convert MRC data to squad format.
 """
 
+import six
 import math
 import gzip
 import json
@@ -27,20 +28,20 @@ def convert_origin_data_for_infer(origin_data_path, save_path):
     pass
 
 
-def convert_last_step_results_for_train(results_path, save_path, step='first'):
+def convert_last_step_results_for_train(results_path, save_path):
     """
         将上一步的推断结果转换为本步骤训练需要的数据
         由于使用的是上一步骤的推断结果，因此存在没有答案的情况
 
-        对于每个 context, 对应多个 relation
-        每个 relation 都有两个问答
-        所以当前 context 的 qas 中会有 2 * relation_num 个条目
+        当前不考虑 由 relation 和 subject 预测 object 构造不出问题的情况
+        这类问题直接不构造, 只考虑 由 relation 预测 subject 没有答案的情况
     """
     relation_questions_dict = extract_examples_dict_from_relation_questions(
         init_train_table_path='../common-datasets/init-train-table.txt',
         relation_questions_path='../common-datasets/relation_questions.txt'
     )
 
+    # 加载上一步骤的推断结果
     with tf.io.gfile.GFile(results_path, mode='r') as reader:
         results = json.load(reader)
     reader.close()
@@ -55,39 +56,73 @@ def convert_last_step_results_for_train(results_path, save_path, step='first'):
         origin_relations = set([sro['relation'] for sro in origin_sros])
 
         pred_sros = paragraph['pred_sros']
-        pred_relations = set([sro['relation'] for sro in pred_sros])
 
-        print(origin_relations)
-        print(pred_relations)
-
-        for sro in pred_sros:
+        # origin sro 存在完整的 s / r / o
+        # 因此可以构建出两个问答
+        for index, sro in enumerate(origin_sros):
             s = sro['subject']
+            r = sro['relation']
             o = sro['object']
 
+            # 确定第一个问题的答案开始位置
             s_start_pos = context.find(s)
+
+            # 确定第二个问题的答案开始位置
             o_start_pos = context.find(o)
 
-            relation_questions = relation_questions_dict[sro['relation']]
+            relation_questions = relation_questions_dict[r]
+
+            # 第一个问题不需要进行关键词替换
             question_a = relation_questions.question_a
+
+            # 第二个问题需要将 subject 替换为当前的真实 subject
             question_b = relation_questions.question_b.replace('subject', s)
 
+            # 构建第一个问题的 qas item
             squad_json_qas_item = get_squad_json_qas_item_template(
                 question=question_a,
                 answers=[{
                     'text': s,
                     'answer_start': s_start_pos
                 }],
+                sro_index=index,
+                is_impossible=False,
                 qas_id='id_' + str(_id)
             )
             _id += 1
             paragraphs[paragraph_index]['qas'].append(squad_json_qas_item)
 
+            # 构建第二个问题的 qas item
             squad_json_qas_item = get_squad_json_qas_item_template(
                 question=question_b,
                 answers=[{
                     'text': o,
                     'answer_start': o_start_pos
                 }],
+                sro_index=index,
+                is_impossible=False,
+                qas_id='id_' + str(_id)
+            )
+            _id += 1
+            paragraphs[paragraph_index]['qas'].append(squad_json_qas_item)
+
+        # pred sro 不存在完整的 s / r / o
+        # 因此只能构建出负样本
+        for index, sro in enumerate(pred_sros):
+            r = sro['relation']
+
+            # 跳过正样本
+            if r in origin_relations:
+                continue
+
+            relation_questions = relation_questions_dict[r]
+            question_a = relation_questions.question_a
+
+            squad_json_qas_item = get_squad_json_qas_item_template(
+                question=question_a,
+                answers=[],
+                sro_index=index,
+                is_impossible=True,
                 qas_id='id_' + str(_id)
             )
             _id += 1
@@ -292,7 +327,7 @@ def _check_is_max_context(doc_spans, cur_span_index, position):
     return cur_span_index == best_span_index
 
 
-def read_squad_examples(input_file, is_training):
+def read_squad_examples(input_file, is_training, version_2_with_negative):
 
     with tf.io.gfile.GFile(input_file, "r") as reader:
         input_data = json.load(reader)["data"]
@@ -325,6 +360,9 @@ def read_squad_examples(input_file, is_training):
         for qa in paragraph["qas"]:
             qas_id = qa["id"]
             question_text = qa["question"]
+
+            # 在 example 中加入 sro_index
+            # 在推断中会使用到
             sro_index = qa['sro_index']
 
             start_position = None
@@ -336,9 +374,13 @@ def read_squad_examples(input_file, is_training):
             # train data 有 answer
             if is_training:
 
+                if version_2_with_negative:
+                    is_impossible = qa['is_impossible']
+
                 if (len(qa["answers"]) != 1) and (not is_impossible):
                     raise ValueError(
                         "For training, each question should have exactly 1 answer.")
+
                 if not is_impossible:
                     answer = qa["answers"][0]
                     orig_answer_text = answer["text"]
@@ -346,7 +388,7 @@ def read_squad_examples(input_file, is_training):
                     answer_length = len(orig_answer_text)
                     start_position = char_to_word_offset[answer_offset]
                     end_position = char_to_word_offset[answer_offset + answer_length - 1]
-                    actual_text = " ".join(doc_tokens[start_position:(end_position + 1)])
+                    actual_text = " ".join(doc_tokens[start_position: (end_position + 1)])
                     cleaned_answer_text = " ".join(
                         tokenization.whitespace_tokenize(orig_answer_text))
                     if actual_text.find(cleaned_answer_text) == -1:
@@ -390,16 +432,16 @@ def convert_examples_to_features(
     base_id = 1000000000
     unique_id = base_id
     feature = None
-    for (example_index, example) in enumerate(examples):
+    for example_index, example in enumerate(examples):
         query_tokens = tokenizer.tokenize(example.question_text)
 
         if len(query_tokens) > max_query_length:
-            query_tokens = query_tokens[0:max_query_length]
+            query_tokens = query_tokens[0: max_query_length]
 
         tok_to_orig_index = []
         orig_to_tok_index = []
         all_doc_tokens = []
-        for (i, token) in enumerate(example.doc_tokens):
+        for i, token in enumerate(example.doc_tokens):
             orig_to_tok_index.append(len(all_doc_tokens))
             sub_tokens = tokenizer.tokenize(token)
             for sub_token in sub_tokens:
@@ -419,7 +461,8 @@ def convert_examples_to_features(
                 tok_end_position = len(all_doc_tokens) - 1
             (tok_start_position, tok_end_position) = _improve_answer_span(
                 all_doc_tokens, tok_start_position, tok_end_position, tokenizer,
-                example.orig_answer_text)
+                example.orig_answer_text
+            )
 
         # The -3 accounts for [CLS], [SEP] and [SEP]
         max_tokens_for_doc = max_seq_length - len(query_tokens) - 3
@@ -438,7 +481,7 @@ def convert_examples_to_features(
                 break
             start_offset += min(length, doc_stride)
 
-        for (doc_span_index, doc_span) in enumerate(doc_spans):
+        for doc_span_index, doc_span in enumerate(doc_spans):
             tokens = []
             token_to_orig_map = {}
             token_is_max_context = {}
@@ -513,7 +556,8 @@ def convert_examples_to_features(
                 segment_ids=segment_ids,
                 start_position=start_position,
                 end_position=end_position,
-                is_impossible=example.is_impossible)
+                is_impossible=example.is_impossible
+            )
 
             # Run callback
             if is_training:
@@ -551,12 +595,14 @@ def generate_tfrecord_from_json_file(
         max_seq_len=384,
         max_query_len=64,
         doc_stride=128,
-        is_train=True
+        is_train=True,
+        version_2_with_negative=False
 ):
     # 从原始数据中读取所有的 example
     examples = read_squad_examples(
         input_file=input_file_path,
-        is_training=is_train
+        is_training=is_train,
+        version_2_with_negative=version_2_with_negative
     )
 
     tokenizer = tokenization.FullTokenizer(vocab_file=vocab_file_path)
@@ -583,7 +629,8 @@ def generate_tfrecord_from_json_file(
         'data_size': writer.num_features,
         'max_seq_len': max_seq_len,
         'max_query_len': max_query_len,
-        'doc_stride': doc_stride
+        'doc_stride': doc_stride,
+        'version_2_with_negative': version_2_with_negative,
     }
     writer.close()
 
@@ -605,8 +652,12 @@ def postprocess_results(
         features_path,
         results_path,
         save_path,
-        n_best_size=20,
-        max_answer_length=30
+        n_best_size,
+        max_answer_length,
+        do_lower_case,
+        version_2_with_negative=False,
+        null_score_diff_threshold=0.0,
+        verbose=False
 ):
 
     # 读取 raw data, 用于构建最终的结果
@@ -643,36 +694,87 @@ def postprocess_results(
         ['feature_index', 'start_index', 'end_index', 'start_logit', 'end_logit']
     )
 
-    all_predictions = []
+    # 不知道有啥用
+    all_nbest_json = collections.OrderedDict()
 
+    # 用于 evaluate
+    all_predictions = collections.OrderedDict()
+    scores_diff_json = collections.OrderedDict()
+
+    # 一个 example 就是一个 **问题 + 文本** 对应一条答案
+    # 但是由于文本长度可能会很长需要进行切片处理
+    # 所以一个样本会被处理成多个 feature
+    # 因此在推断的过程中需要分别处理所有 feature, 并从中找出最合适的答案
     for example_index, example in enumerate(examples):
-        cur_features = example_index_to_features[example_index]
 
+        # 获取当前 example 对应的所有 features
+        cur_example_features = example_index_to_features[example_index]
+
+        # 候选答案
         prelim_predictions = []
-        for feature_index, feature in enumerate(cur_features):
+
+        score_null = 1000000
+        min_null_feature_index = 0
+        null_start_logit = 0
+        null_end_logit = 0
+
+        for feature_index, feature in enumerate(cur_example_features):
+
+            # 获取当前 feature 对应的答案
             result = unique_id_to_result[feature.unique_id]
+
+            # 获取最大的 n 个 logit 的位置
             n_best_start_index = _get_best_indexes(result.start_logits, n_best_size)
             n_best_end_index = _get_best_indexes(result.end_logits, n_best_size)
 
+            if version_2_with_negative:
+                feature_null_score = result.start_logits[0] + result.end_logits[0]
+                if feature_null_score < score_null:
+                    score_null = feature_null_score
+                    min_null_feature_index = feature_index
+                    null_start_logit = result.start_logits[0]
+                    null_end_logit = result.end_logits[0]
+
+            # 对所有的 start_index 和 end_index 进行判断
+            # 筛选出所有可能形成答案的 start_index 和 end_index
             for start_index in n_best_start_index:
                 for end_index in n_best_end_index:
+
+                    # 开始位置超过了 context 的长度, 非法 index
                     if start_index >= len(feature.tokens):
                         continue
+
+                    # 结束位置超过了 context 的长度, 非法 index
                     if end_index >= len(feature.tokens):
                         continue
+
+                    # 开始位置对应不到原文的位置, 非法 index
                     if start_index not in feature.token_to_origin_map:
                         continue
+
+                    # 结束位置对应不到原文的位置, 非法 index
                     if end_index not in feature.token_to_origin_map:
                         continue
+
+                    # 开始位置的 token 不是 max_content, 说明当前 feature 对应的 context 不在中间位置
                     if not feature.token_is_max_context.get(start_index, False):
                         continue
+
+                    # 开始位置在结束位置后面, 非法 index
                     if end_index < start_index:
                         continue
 
+                    # 通过上面的一系列过滤之后, 留下来的 index 都是合法的 index
+
+                    # 计算答案长度
                     length = end_index - start_index + 1
+
+                    # 超过了最长长度, 则舍弃这条答案
                     if length > max_answer_length:
                         continue
 
+                    # 一个可能的答案的 index
+                    # 将其保存下来
                     prelim_predictions.append(
                         _PrelimPrediction(
                             feature_index=feature_index,
@@ -683,49 +785,152 @@ def postprocess_results(
                         )
                     )
 
-            prelim_predictions = sorted(
-                prelim_predictions,
-                key=lambda x: (x.start_logit + x.end_logit),
-                reverse=True
+        if version_2_with_negative:
+            prelim_predictions.append(
+                _PrelimPrediction(
+                    feature_index=min_null_feature_index,
+                    start_index=0,
+                    end_index=0,
+                    start_logit=null_start_logit,
+                    end_logit=null_end_logit
+                )
             )
 
-            _NbestPrediction = collections.namedtuple(
-                'NbestPrediction', ['text', 'start_logit', 'end_logit']
+        # start_logit end_logit 的和越大就认为这个答案越好
+        prelim_predictions = sorted(
+            prelim_predictions,
+            key=lambda x: (x.start_logit + x.end_logit),
+            reverse=True
+        )
+
+        # 用于表示最好的 N 个预测结果之一
+        _NbestPrediction = collections.namedtuple(
+            'NbestPrediction', ['text', 'start_logit', 'end_logit']
+        )
+
+        # 已经见到过的预测结果
+        seen_predictions = {}
+
+        # 所有 n 个最好的结果
+        nbest = []
+
+        # 这里 for 循环的含义是:
+        # 根据前面挑选出的最好的 n 个 (start_index, end_index) 找出合适的 **原文中的连续文本**
+        for pred in prelim_predictions:
+            # 如果已经找出 n 个最好的结果, 则停止后续的寻找
+            if len(nbest) >= n_best_size:
+                break
+
+            # 当前预测结果来自的 feature
+            feature = cur_example_features[pred.feature_index]
+
+            # 有答案
+            if pred.start_index > 0:
+
+                # 答案对应的所有 tokens
+                tok_tokens = feature.tokens[pred.start_index: (pred.end_index + 1)]
+
+                # 答案在原始文章的 tokens 中的开始位置
+                orig_doc_start = feature.token_to_orig_map[pred.start_index]
+
+                # 答案在原始文章的 tokens 中的结束位置
+                orig_doc_end = feature.token_to_orig_map[pred.end_index]
+
+                # 答案在原始文章中对应的 tokens
+                orig_tokens = example.doc_tokens[orig_doc_start: (orig_doc_end + 1)]
+
+                # 将 tokens 合并
+                tok_text = " ".join(tok_tokens)
+
+                # De-tokenize WordPieces that have been split off.
+                # 删除所有由 WordPiece 分词生成的 ##
+                tok_text = tok_text.replace(" ##", "")
+                tok_text = tok_text.replace("##", "")
+
+                # Clean whitespace
+                tok_text = tok_text.strip()
+                tok_text = " ".join(tok_text.split())
+                orig_text = " ".join(orig_tokens)
+
+                final_text = get_final_text(
+                    tok_text, orig_text, do_lower_case=True, verbose=False
+                )
+
+                # 如果当前答案已经出现过
+                if final_text in seen_predictions:
+                    continue
+
+                seen_predictions[final_text] = True
+
+            # 没答案(预测为 -1)
+            else:
+                final_text = ""
+                seen_predictions[final_text] = True
+
+            nbest.append(
+                _NbestPrediction(
+                    text=final_text,
+                    start_logit=pred.start_logit,
+                    end_logit=pred.end_logit
+                )
             )
 
-            seen_predictions = {}
-            nbest = []
-            for pred in prelim_predictions:
-                if len(nbest) >= n_best_size:
-                    break
+        if version_2_with_negative:
+            if "" not in seen_predictions:
+                nbest.append(
+                    _NbestPrediction(
+                        text="",
+                        start_logit=null_start_logit,
+                        end_logit=null_end_logit
+                    )
+                )
 
-                feature = cur_features[pred.feature_index]
-                if pred.start_index > 0:
-                    tok_tokens = feature.tokens[pred.start_index:(pred.end_index + 1)]
-                    orig_doc_start = feature.token_to_orig_map[pred.start_index]
-                    orig_doc_end = feature.token_to_orig_map[pred.end_index]
-                    orig_tokens = example.doc_tokens[orig_doc_start:(orig_doc_end + 1)]
-                    tok_text = " ".join(tok_tokens)
+        if not nbest:
+            nbest.append(
+                _NbestPrediction(text='empty', start_logit=0.0, end_logit=0.0)
+            )
 
-                    # De-tokenize WordPieces that have been split off.
-                    tok_text = tok_text.replace(" ##", "")
-                    tok_text = tok_text.replace("##", "")
+        assert len(nbest) >= 1
 
-                    # Clean whitespace
-                    tok_text = tok_text.strip()
-                    tok_text = " ".join(tok_text.split())
-                    orig_text = " ".join(orig_tokens)
+        total_scores = []
+        best_non_null_entry = None
+        for entry in nbest:
+            total_scores.append(entry.start_logit + entry.end_logit)
+            if not best_non_null_entry:
+                if entry.text:
+                    best_non_null_entry = entry
 
-                    final_text = get_final_text(
-                        tok_text, orig_text, do_lower_case=True, verbose=0)
-                    if final_text in seen_predictions:
-                        continue
+        probs = _compute_softmax(total_scores)
 
-                    seen_predictions[final_text] = True
+        nbest_json = []
+        for i, entry in enumerate(nbest):
+            output = collections.OrderedDict()
+            output['text'] = entry.text
+            output['probability'] = probs[i]
+            output['start_logit'] = entry.start_logit
+            output['end_logit'] = entry.end_logit
+            nbest_json.append(output)
+
+        assert len(nbest_json) >= 1
+
+        if not version_2_with_negative:
+            all_predictions[example.qas_id] = nbest_json[0]["text"]
+        else:
+            if best_non_null_entry is not None:
+                score_diff = score_null - best_non_null_entry.start_logit - best_non_null_entry.end_logit
+                scores_diff_json[example.qas_id] = score_diff
+                if score_diff > null_score_diff_threshold:
+                    all_predictions[example.qas_id] = ""
                 else:
-                    final_text = ""
-                    seen_predictions[final_text] = True
+                    all_predictions[example.qas_id] = best_non_null_entry.text
+            else:
+                logging.warning("best_non_null_entry is None")
+                scores_diff_json[example.qas_id] = score_null
+                all_predictions[example.qas_id] = ""
 
+        all_nbest_json[example.qas_id] = nbest_json
+
+    return all_predictions, all_nbest_json, scores_diff_json
 
 
 def get_final_text(pred_text, orig_text, do_lower_case, verbose=False):
@@ -858,8 +1063,19 @@ def _compute_softmax(scores):
     return probs
 
 
-
 if __name__ == '__main__':
+
+    # # 将 **上一步骤** 的训练数据集的推断结果转为当前步骤的训练数据
+    # convert_last_step_results_for_train(
+    #     '../multi_turn_mrc_cls_task/results/for_infer/postprocessed/train_results.json',
+    #     'datasets/raw/for_train/last_task/train.json'
+    # )
+    # # 将 **上一步骤** 的验证数据集的推断结果转为当前步骤的验证数据
+    # convert_last_step_results_for_train(
+    #     '../multi_turn_mrc_cls_task/results/for_infer/postprocessed/valid_results.json',
+    #     'datasets/raw/for_train/last_task/valid.json'
+    # )
+
     # 将 **上一步骤** 训练数据集的结果转为用于推断的 **原生数据**
     # convert_last_step_results_for_infer(
     #     results_path='../multi_turn_mrc_cls_task/results/for_infer/postprocessed/train_results.json',
@@ -912,11 +1128,37 @@ if __name__ == '__main__':
     # )
 
     # 处理 验证集的推断结果
-    postprocess_results(
-        raw_data_path='datasets/raw/for_infer/first_step/valid.json',
-        features_path='datasets/features/for_infer/first_step/valid_features.pkl',
-        results_path='results/for_infer/raw/first_step/valid_results.json',
-        save_path='results/for_infer/postprocessed/first_step/valid_results.json'
-    )
+    # postprocess_results(
+    #     raw_data_path='datasets/raw/for_infer/first_step/valid.json',
+    #     features_path='datasets/features/for_infer/first_step/valid_features.pkl',
+    #     results_path='results/for_infer/raw/first_step/valid_results.json',
+    #     save_path='results/for_infer/postprocessed/first_step/valid_results.json'
+    # )
 
+    # 为上一步结果转换的训练数据生成 tfrecord
+    generate_tfrecord_from_json_file(
+        input_file_path='datasets/raw/for_train/last_task/train.json',
+        vocab_file_path='../vocabs/bert-base-chinese-vocab.txt',
+        tfrecord_save_path='datasets/tfrecords/for_train/last_task/train.tfrecord',
+        meta_save_path='datasets/tfrecords/for_train/last_task/train_meta.json',
+        features_save_path='datasets/features/for_train/train_features.pkl',
+        max_seq_len=165,
+        max_query_len=45,
+        doc_stride=128,
+        is_train=True,
+        version_2_with_negative=True
+    )
+    # 为上一步结果转换的验证数据生成 tfrecord
+    generate_tfrecord_from_json_file(
+        input_file_path='datasets/raw/for_train/last_task/valid.json',
+        vocab_file_path='../vocabs/bert-base-chinese-vocab.txt',
+        tfrecord_save_path='datasets/tfrecords/for_train/last_task/valid.tfrecord',
+        meta_save_path='datasets/tfrecords/for_train/last_task/valid_meta.json',
+        features_save_path='datasets/features/for_train/valid_features.pkl',
+        max_seq_len=165,
+        max_query_len=45,
+        doc_stride=128,
+        is_train=True,
+        version_2_with_negative=True
+    )
     pass

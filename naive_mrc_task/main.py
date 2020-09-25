@@ -72,7 +72,7 @@ class MRCTask:
 
     def train(self):
 
-        with tf.io.gfile.GFile(self.train_meta_data, mode='r') as reader:
+        with tf.io.gfile.GFile(self.train_tfrecord_meta_path, mode='r') as reader:
             self.train_meta_data = json.load(reader)
         reader.close()
 
@@ -325,7 +325,7 @@ def main():
     logging.set_verbosity(logging.INFO)
     task = MRCTask(
         get_model_params(),
-        use_pretrain=False,
+        use_pretrain=True,
         batch_size=48,
         inference_model_dir='saved_models/version_1'
     )
@@ -336,7 +336,9 @@ if __name__ == '__main__':
     task = main()
 
     # 推断上一步骤的验证集结果
-    task.predict_tfrecord(
-        tfrecord_path='datasets/tfrecords/for_infer/first_step/valid.tfrecord',
-        save_path='results/for_infer/raw/first_step/valid_results.json'
-    )
+    # task.predict_tfrecord(
+    #     tfrecord_path='datasets/tfrecords/for_infer/first_step/valid.tfrecord',
+    #     save_path='results/for_infer/raw/first_step/valid_results.json'
+    # )
+
+    task.train()

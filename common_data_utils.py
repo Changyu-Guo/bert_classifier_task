@@ -232,10 +232,18 @@ def get_squad_json_paragraph_template(
     }
 
 
-def get_squad_json_qas_item_template(question: str, answers: List, qas_id: str) -> Dict:
+def get_squad_json_qas_item_template(
+        question: str,
+        answers: List,
+        sro_index: int,
+        qas_id: str,
+        is_impossible: bool = False
+) -> Dict:
     return {
         'question': question,
         'answers': answers,
+        'sro_index': sro_index,
+        'is_impossible': is_impossible,
         'id': qas_id
     }
 
