@@ -450,9 +450,9 @@ if __name__ == '__main__':
     # generate_tfrecord_from_json_file(
     #     input_file_path='datasets/raw/train.json',
     #     vocab_file_path='../vocabs/bert-base-chinese-vocab.txt',
-    #     output_save_path='datasets/tfrecords/for_infer/train.tfrecord',
-    #     meta_save_path='datasets/tfrecords/for_infer/train_meta.json',
-    #     features_save_path='datasets/features/for_infer/train_features.pkl',
+    #     output_save_path='datasets/tfrecords/origin/train.tfrecord',
+    #     meta_save_path='datasets/tfrecords/origin/train_meta.json',
+    #     features_save_path='datasets/features/origin/train_features.pkl',
     #     max_seq_len=165,
     #     is_train=False  # infer 的过程中不需要使用随机的样本, 就对固定的 53 个问题进行推断
     # )
@@ -472,9 +472,9 @@ if __name__ == '__main__':
     # generate_tfrecord_from_json_file(
     #     input_file_path='datasets/raw/valid.json',
     #     vocab_file_path='../vocabs/bert-base-chinese-vocab.txt',
-    #     output_save_path='datasets/tfrecords/for_infer/valid.tfrecord',
-    #     meta_save_path='datasets/tfrecords/for_infer/valid_meta.json',
-    #     features_save_path='datasets/features/for_infer/valid_features.pkl',
+    #     output_save_path='datasets/tfrecords/origin/valid.tfrecord',
+    #     meta_save_path='datasets/tfrecords/origin/valid_meta.json',
+    #     features_save_path='datasets/features/origin/valid_features.pkl',
     #     max_seq_len=165,
     #     is_train=False  # 这里一定要为 False, 因为 valid data 不需要随机的样本
     # )
@@ -482,27 +482,27 @@ if __name__ == '__main__':
     # 处理训练数据的推断结果
     # postprocess_results(
     #     raw_data_path='datasets/raw/train.json',
-    #     features_path='datasets/features/for_infer/train_features.pkl',
-    #     results_path='results/for_infer/raw/train_results.json',
-    #     save_path='results/for_infer/postprocessed/train_results.json'
+    #     features_path='datasets/features/origin/train_features.pkl',
+    #     results_path='infer_results/origin/raw/train_results.json',
+    #     save_path='infer_results/origin/postprocessed/train_results.json'
     # )
 
     # 处理验证集的推断结果
     # postprocess_results(
     #     raw_data_path='datasets/raw/valid.json',
-    #     features_path='datasets/features/for_infer/valid_features.pkl',
-    #     results_path='results/for_infer/raw/valid_results.json',
-    #     save_path='results/for_infer/postprocessed/valid_results.json'
+    #     features_path='datasets/features/origin/valid_features.pkl',
+    #     results_path='infer_results/origin/raw/valid_results.json',
+    #     save_path='infer_results/origin/postprocessed/valid_results.json'
     # )
 
     # 训练集 PRF
     compute_prf(
         features_path='datasets/features/for_infer/train_features.pkl',
-        results_path='results/for_infer/raw/train_results.json'
+        results_path='infer_results/origin/raw/train_results.json'
     )
 
     # 测试机 PRF
     compute_prf(
         features_path='datasets/features/for_infer/valid_features.pkl',
-        results_path='results/for_infer/raw/valid_results.json'
+        results_path='infer_results/origin/raw/valid_results.json'
     )

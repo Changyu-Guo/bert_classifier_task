@@ -25,7 +25,6 @@ class MRCTask:
             kwargs,
             use_pretrain=None,
             batch_size=None,
-            inference_model_dir=None
     ):
 
         # param check
@@ -34,7 +33,6 @@ class MRCTask:
 
         self.batch_size = batch_size
         self.use_pretrain = use_pretrain
-        self.inference_model_dir = inference_model_dir
 
         self.task_name = kwargs['task_name']
 
@@ -202,12 +200,12 @@ class MRCTask:
 
         return callbacks
 
-    def predict_tfrecord(self, tfrecord_path, save_path):
+    def predict_tfrecord(self, inference_model_dir, tfrecord_path, save_path):
 
         dataset = read_and_batch_from_tfrecord(
             filepath=tfrecord_path,
             max_seq_len=self.max_seq_len,
-            is_training=False,
+            is_training=False,  # 推断的过程中将 is_training 设置为 False, 不再读取真实答案
             repeat=False,
             shuffle=False,
             batch_size=self.predict_batch_size
@@ -221,12 +219,12 @@ class MRCTask:
             checkpoint = tf.train.Checkpoint(model=model)
             checkpoint.restore(
                 tf.train.latest_checkpoint(
-                    self.inference_model_dir
+                    inference_model_dir
                 )
             )
             logging.info('Restore checkpoint {} from {}'.format(
-                tf.train.latest_checkpoint(self.inference_model_dir),
-                self.inference_model_dir
+                tf.train.latest_checkpoint(inference_model_dir),
+                inference_model_dir
             ))
 
         # predict
@@ -293,7 +291,7 @@ VOCAB_FILE_PATH = '../vocabs/bert-base-chinese-vocab.txt'
 MAX_SEQ_LEN = 165
 MAX_QUERY_LEN = 45
 DOC_STRIDE = 128
-PREDICT_BATCH_SIZE = 64
+PREDICT_BATCH_SIZE = 128
 
 # train relate
 LEARNING_RATE = 3e-5
@@ -329,8 +327,7 @@ def main():
     task = MRCTask(
         get_model_params(),
         use_pretrain=True,
-        batch_size=48,
-        inference_model_dir='saved_models/version_1'
+        batch_size=48
     )
     return task
 
@@ -340,8 +337,24 @@ if __name__ == '__main__':
 
     # 推断上一步骤的验证集结果
     # task.predict_tfrecord(
-    #     tfrecord_path='datasets/tfrecords/for_infer/first_step/valid.tfrecord',
-    #     save_path='results/for_infer/raw/first_step/valid_results.json'
+    #     tfrecord_path='datasets/tfrecords/origin/first_step/valid.tfrecord',
+    #     save_path='infer_results/origin/raw/first_step/valid_results.json'
     # )
 
-    task.train()
+    # task.predict_tfrecord(
+    #     tfrecord_path='datasets/tfrecords/for_train/from_last_task/train.tfrecord',
+    #     save_path='infer_results/for_train/raw/first_step/from_last_task/train_result.json'
+    # )
+
+    # task.predict_tfrecord(
+    #     inference_model_dir='saved_models/version_2',
+    #     tfrecord_path='datasets/tfrecords/for_infer/from_last_task/first_step/valid.tfrecord',
+    #     save_path='infer_results/last_task/use_version_2/first_step/raw/valid_results.json'
+    # )
+    task.predict_tfrecord(
+        inference_model_dir='saved_models/version_2',
+        tfrecord_path='datasets/tfrecords/for_infer/from_last_task/second_step/train.tfrecord',
+        save_path='infer_results/last_task/use_version_2/second_step/raw/train_results.json'
+    )
+
+    # task.train()

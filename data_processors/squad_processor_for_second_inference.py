@@ -455,7 +455,7 @@ def postprocess_output(
         do_lower_case,
         verbose=False
 ):
-    """Postprocess model output, to form prediction results."""
+    """Postprocess model output, to form prediction infer_results."""
 
     # 每个 example 可能对应多个 feature
     # example_index_to_features 的作用是根据 example 的 index 找到其对应的 features

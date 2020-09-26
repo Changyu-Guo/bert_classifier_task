@@ -5,3 +5,5 @@ logs
 /pretrained_model
 
 saved_models
+
+infer_results

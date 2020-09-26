@@ -39,7 +39,7 @@ valid_data_before_first_step_save_path = 'common-datasets/preprocessed_datasets/
 train_tfrecord_before_first_step_save_path = 'common-datasets/tfrecord_datasets/first_step_train.tfrecord'
 valid_tfrecord_before_first_step_save_path = 'common-datasets/tfrecord_datasets/first_step_valid.tfrecord'
 
-# first step inference results
+# first step inference infer_results
 train_data_after_first_step_save_path = 'inference_results/mrc_results/in_use/first_step/train_results.json'
 valid_data_after_first_step_save_path = 'inference_results/mrc_results/in_use/first_step/valid_results.json'
 

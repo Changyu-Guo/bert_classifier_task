@@ -349,7 +349,7 @@ def postprocess_valid_output(
     print(recall)
     print(f1)
 
-    # origin valid data
+    # from_origin valid data
     init_train_examples = read_init_train_valid_examples('common-datasets/raw_datasets/init-train-valid.json')
     _, relations, _, _ = extract_relations_from_init_train_table()
 
@@ -393,7 +393,7 @@ def postprocess_train_output(
     print(recall)
     print(f1)
 
-    # origin valid data
+    # from_origin valid data
     init_train_examples = read_init_train_valid_examples('common-datasets/raw_datasets/init-train-train.json')
     _, relations, _, _ = extract_relations_from_init_train_table()
 

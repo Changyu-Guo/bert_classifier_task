@@ -5,6 +5,7 @@
     Convert MRC data to squad format.
 """
 
+import os
 import six
 import math
 import gzip
@@ -24,7 +25,8 @@ def convert_origin_data_for_train(origin_data_path, save_path):
     pass
 
 
-def convert_origin_data_for_infer(origin_data_path, save_path):
+# 所有的 ..._for_infer 函数都需要指定是为第一步推断准备数据还是为第二步推断准备数据
+def convert_origin_data_for_infer(origin_data_path, save_path, step='first'):
     pass
 
 
@@ -57,7 +59,7 @@ def convert_last_step_results_for_train(results_path, save_path):
 
         pred_sros = paragraph['pred_sros']
 
-        # origin sro 存在完整的 s / r / o
+        # from_origin sro 存在完整的 s / r / o
         # 因此可以构建出两个问答
         for index, sro in enumerate(origin_sros):
             s = sro['subject']
@@ -135,24 +137,44 @@ def convert_last_step_results_for_train(results_path, save_path):
 
 
 def convert_last_step_results_for_infer(results_path, save_path, step='first'):
+    """
+        上一步骤对数据进行了推断之后, 要经过当前步骤的模型进行推断
+        上一步骤推断出了原始文本应该包含的所有 relation, 这些 relation 中包含一些错误的 relation
+        当前步骤要做的就是根据所有推断出的 relation (正确的 + 错误的) 推断出 subject 和 object
+        推断分两个步骤:
+            1. 第一步是根据 relation 推断出 subject
+            2. 第二步是根据 relation 和 subject 推断出 object
+        注意: 在完成第一步推断之后需要完成不存在答案的结果的过滤
+
+        因此在准备推断数据的时候, 也需要分两个阶段进行准备:
+            1. 首先准备第一阶段的数据, 该阶段的数据问题只包含 question_a
+            2. 然后准备第二阶段的数据, 该阶段的数据问题只包含 question_b
+
+        准备好数据之后由模型对这些问题进行推断
+    """
 
     if step not in ['first', 'second']:
         raise ValueError('step must be first or second')
 
+    # relation -> questions
     relation_questions_dict = extract_examples_dict_from_relation_questions(
         init_train_table_path='../common-datasets/init-train-table.txt',
         relation_questions_path='../common-datasets/relation_questions.txt'
     )
 
+    # 获取上一步骤的推断结果
     with tf.io.gfile.GFile(results_path, mode='r') as reader:
         results = json.load(reader)
     reader.close()
 
     paragraphs = results['data'][0]['paragraphs']
 
+    # 开始构建问题
     qas_id = 0
     for paragraph_index, paragraph in enumerate(paragraphs):
 
+        # 在构建之前将 qas 列表重置
+        paragraphs[paragraph_index]['qas'] = []
         # 在 first step 中使用 relation 推断 subject
         # 在 second step 中使用 relation 和 subject 推断 object
         pred_sros = paragraph['pred_sros']
@@ -167,6 +189,8 @@ def convert_last_step_results_for_infer(results_path, save_path, step='first'):
 
             # 第二步推断使用第二个问题
             if step == 'second':
+                if sro['subject'] == '':
+                    continue
                 question = relation_questions.question_b.replace('subject', sro['subject'])
 
             squad_json_qas_item = {
@@ -630,6 +654,7 @@ def generate_tfrecord_from_json_file(
         'max_seq_len': max_seq_len,
         'max_query_len': max_query_len,
         'doc_stride': doc_stride,
+        'is_train': is_train,
         'version_2_with_negative': version_2_with_negative,
     }
     writer.close()
@@ -645,292 +670,6 @@ def generate_tfrecord_from_json_file(
     writer.close()
 
     return meta_data
-
-
-def postprocess_results(
-        raw_data_path,
-        features_path,
-        results_path,
-        save_path,
-        n_best_size,
-        max_answer_length,
-        do_lower_case,
-        version_2_with_negative=False,
-        null_score_diff_threshold=0.0,
-        verbose=False
-):
-
-    # 读取 raw data, 用于构建最终的结果
-    with tf.io.gfile.GFile(raw_data_path, mode='r') as reader:
-        raw_data = json.load(reader)
-    reader.close()
-    paragraphs = raw_data['data'][0]['paragraphs']
-
-    examples = read_squad_examples(
-        input_file=raw_data_path,
-        is_training=False
-    )
-
-    with gzip.open(features_path, mode='rb') as reader:
-        features = pickle.load(reader)
-    reader.close()
-
-    with tf.io.gfile.GFile(results_path, mode='r') as reader:
-        results = json.load(reader)
-    reader.close()
-
-    assert len(features) == len(results)
-
-    example_index_to_features = collections.defaultdict(list)
-    for feature in features:
-        example_index_to_features[feature.example_index].append(feature)
-
-    unique_id_to_result = {}
-    for result in results:
-        unique_id_to_result[result.unique_id] = result
-
-    _PrelimPrediction = collections.namedtuple(
-        'PrelimPrediction',
-        ['feature_index', 'start_index', 'end_index', 'start_logit', 'end_logit']
-    )
-
-    # 不知道有啥用
-    all_nbest_json = collections.OrderedDict()
-
-    # 用于 evaluate
-    all_predictions = collections.OrderedDict()
-    scores_diff_json = collections.OrderedDict()
-
-    # 一个 example 就是一个 **问题 + 文本** 对应一条答案
-    # 但是由于文本长度可能会很长需要进行切片处理
-    # 所以一个样本会被处理成多个 feature
-    # 因此在推断的过程中需要分别处理所有 feature, 并从中找出最合适的答案
-    for example_index, example in enumerate(examples):
-
-        # 获取当前 example 对应的所有 features
-        cur_example_features = example_index_to_features[example_index]
-
-        # 候选答案
-        prelim_predictions = []
-
-        score_null = 1000000
-        min_null_feature_index = 0
-        null_start_logit = 0
-        null_end_logit = 0
-
-        for feature_index, feature in enumerate(cur_example_features):
-
-            # 获取当前 feature 对应的答案
-            result = unique_id_to_result[feature.unique_id]
-
-            # 获取最大的 n 个 logit 的位置
-            n_best_start_index = _get_best_indexes(result.start_logits, n_best_size)
-            n_best_end_index = _get_best_indexes(result.end_logits, n_best_size)
-
-            if version_2_with_negative:
-                feature_null_score = result.start_logits[0] + result.end_logits[0]
-                if feature_null_score < score_null:
-                    score_null = feature_null_score
-                    min_null_feature_index = feature_index
-                    null_start_logit = result.start_logits[0]
-                    null_end_logit = result.end_logits[0]
-
-            # 对所有的 start_index 和 end_index 进行判断
-            # 筛选出所有可能形成答案的 start_index 和 end_index
-            for start_index in n_best_start_index:
-                for end_index in n_best_end_index:
-
-                    # 开始位置超过了 context 的长度, 非法 index
-                    if start_index >= len(feature.tokens):
-                        continue
-
-                    # 结束位置超过了 context 的长度, 非法 index
-                    if end_index >= len(feature.tokens):
-                        continue
-
-                    # 开始位置对应不到原文的位置, 非法 index
-                    if start_index not in feature.token_to_origin_map:
-                        continue
-
-                    # 结束位置对应不到原文的位置, 非法 index
-                    if end_index not in feature.token_to_origin_map:
-                        continue
-
-                    # 开始位置的 token 不是 max_content, 说明当前 feature 对应的 context 不在中间位置
-                    if not feature.token_is_max_context.get(start_index, False):
-                        continue
-
-                    # 开始位置在结束位置后面, 非法 index
-                    if end_index < start_index:
-                        continue
-
-                    # 通过上面的一系列过滤之后, 留下来的 index 都是合法的 index
-
-                    # 计算答案长度
-                    length = end_index - start_index + 1
-
-                    # 超过了最长长度, 则舍弃这条答案
-                    if length > max_answer_length:
-                        continue
-
-                    # 一个可能的答案的 index
-                    # 将其保存下来
-                    prelim_predictions.append(
-                        _PrelimPrediction(
-                            feature_index=feature_index,
-                            start_index=start_index,
-                            end_index=end_index,
-                            start_logit=result.start_logits[start_index],
-                            end_logit=result.end_logits[end_index]
-                        )
-                    )
-
-        if version_2_with_negative:
-            prelim_predictions.append(
-                _PrelimPrediction(
-                    feature_index=min_null_feature_index,
-                    start_index=0,
-                    end_index=0,
-                    start_logit=null_start_logit,
-                    end_logit=null_end_logit
-                )
-            )
-
-        # start_logit end_logit 的和越大就认为这个答案越好
-        prelim_predictions = sorted(
-            prelim_predictions,
-            key=lambda x: (x.start_logit + x.end_logit),
-            reverse=True
-        )
-
-        # 用于表示最好的 N 个预测结果之一
-        _NbestPrediction = collections.namedtuple(
-            'NbestPrediction', ['text', 'start_logit', 'end_logit']
-        )
-
-        # 已经见到过的预测结果
-        seen_predictions = {}
-
-        # 所有 n 个最好的结果
-        nbest = []
-
-        # 这里 for 循环的含义是:
-        # 根据前面挑选出的最好的 n 个 (start_index, end_index) 找出合适的 **原文中的连续文本**
-        for pred in prelim_predictions:
-            # 如果已经找出 n 个最好的结果, 则停止后续的寻找
-            if len(nbest) >= n_best_size:
-                break
-
-            # 当前预测结果来自的 feature
-            feature = cur_example_features[pred.feature_index]
-
-            # 有答案
-            if pred.start_index > 0:
-
-                # 答案对应的所有 tokens
-                tok_tokens = feature.tokens[pred.start_index: (pred.end_index + 1)]
-
-                # 答案在原始文章的 tokens 中的开始位置
-                orig_doc_start = feature.token_to_orig_map[pred.start_index]
-
-                # 答案在原始文章的 tokens 中的结束位置
-                orig_doc_end = feature.token_to_orig_map[pred.end_index]
-
-                # 答案在原始文章中对应的 tokens
-                orig_tokens = example.doc_tokens[orig_doc_start: (orig_doc_end + 1)]
-
-                # 将 tokens 合并
-                tok_text = " ".join(tok_tokens)
-
-                # De-tokenize WordPieces that have been split off.
-                # 删除所有由 WordPiece 分词生成的 ##
-                tok_text = tok_text.replace(" ##", "")
-                tok_text = tok_text.replace("##", "")
-
-                # Clean whitespace
-                tok_text = tok_text.strip()
-                tok_text = " ".join(tok_text.split())
-                orig_text = " ".join(orig_tokens)
-
-                final_text = get_final_text(
-                    tok_text, orig_text, do_lower_case=True, verbose=False
-                )
-
-                # 如果当前答案已经出现过
-                if final_text in seen_predictions:
-                    continue
-
-                seen_predictions[final_text] = True
-
-            # 没答案(预测为 -1)
-            else:
-                final_text = ""
-                seen_predictions[final_text] = True
-
-            nbest.append(
-                _NbestPrediction(
-                    text=final_text,
-                    start_logit=pred.start_logit,
-                    end_logit=pred.end_logit
-                )
-            )
-
-        if version_2_with_negative:
-            if "" not in seen_predictions:
-                nbest.append(
-                    _NbestPrediction(
-                        text="",
-                        start_logit=null_start_logit,
-                        end_logit=null_end_logit
-                    )
-                )
-
-        if not nbest:
-            nbest.append(
-                _NbestPrediction(text='empty', start_logit=0.0, end_logit=0.0)
-            )
-
-        assert len(nbest) >= 1
-
-        total_scores = []
-        best_non_null_entry = None
-        for entry in nbest:
-            total_scores.append(entry.start_logit + entry.end_logit)
-            if not best_non_null_entry:
-                if entry.text:
-                    best_non_null_entry = entry
-
-        probs = _compute_softmax(total_scores)
-
-        nbest_json = []
-        for i, entry in enumerate(nbest):
-            output = collections.OrderedDict()
-            output['text'] = entry.text
-            output['probability'] = probs[i]
-            output['start_logit'] = entry.start_logit
-            output['end_logit'] = entry.end_logit
-            nbest_json.append(output)
-
-        assert len(nbest_json) >= 1
-
-        if not version_2_with_negative:
-            all_predictions[example.qas_id] = nbest_json[0]["text"]
-        else:
-            if best_non_null_entry is not None:
-                score_diff = score_null - best_non_null_entry.start_logit - best_non_null_entry.end_logit
-                scores_diff_json[example.qas_id] = score_diff
-                if score_diff > null_score_diff_threshold:
-                    all_predictions[example.qas_id] = ""
-                else:
-                    all_predictions[example.qas_id] = best_non_null_entry.text
-            else:
-                logging.warning("best_non_null_entry is None")
-                scores_diff_json[example.qas_id] = score_null
-                all_predictions[example.qas_id] = ""
-
-        all_nbest_json[example.qas_id] = nbest_json
-
-    return all_predictions, all_nbest_json, scores_diff_json
 
 
 def get_final_text(pred_text, orig_text, do_lower_case, verbose=False):
@@ -1063,102 +802,450 @@ def _compute_softmax(scores):
     return probs
 
 
+def postprocess_results(
+        raw_data_path,
+        features_path,
+        results_path,
+        save_dir,
+        prefix,
+        n_best_size,
+        max_answer_length,
+        do_lower_case,
+        step='first',
+        version_2_with_negative=False,
+        null_score_diff_threshold=0.0,
+        verbose=False
+):
+
+    # 读取 raw data, 用于构建最终的结果
+    with tf.io.gfile.GFile(raw_data_path, mode='r') as reader:
+        raw_data = json.load(reader)
+    reader.close()
+    paragraphs = raw_data['data'][0]['paragraphs']
+
+    examples = read_squad_examples(
+        input_file=raw_data_path,
+        is_training=False,
+        version_2_with_negative=version_2_with_negative
+    )
+
+    with gzip.open(features_path, mode='rb') as reader:
+        features = pickle.load(reader)
+    reader.close()
+
+    with tf.io.gfile.GFile(results_path, mode='r') as reader:
+        results = json.load(reader)
+    reader.close()
+
+    assert len(features) == len(results)
+
+    example_index_to_features = collections.defaultdict(list)
+    for feature in features:
+        example_index_to_features[feature.example_index].append(feature)
+
+    unique_id_to_result = {}
+    for result in results:
+        unique_id_to_result[result['unique_id']] = result
+
+    _PrelimPrediction = collections.namedtuple(
+        'PrelimPrediction',
+        ['feature_index', 'start_index', 'end_index', 'start_logit', 'end_logit']
+    )
+
+    # 不知道有啥用
+    all_nbest_json = collections.OrderedDict()
+
+    # 用于 evaluate
+    all_predictions = collections.OrderedDict()
+    scores_diff_json = collections.OrderedDict()
+
+    # 一个 example 就是一个 **问题 + 文本** 对应一条答案
+    # 但是由于文本长度可能会很长需要进行切片处理
+    # 所以一个样本会被处理成多个 feature
+    # 因此在推断的过程中需要分别处理所有 feature, 并从中找出最合适的答案
+    for example_index, example in enumerate(examples):
+
+        # 获取当前 example 对应的所有 features
+        cur_example_features = example_index_to_features[example_index]
+
+        # 候选答案
+        prelim_predictions = []
+
+        score_null = 1000000
+        min_null_feature_index = 0
+        null_start_logit = 0
+        null_end_logit = 0
+
+        for feature_index, feature in enumerate(cur_example_features):
+
+            # 获取当前 feature 对应的答案
+            result = unique_id_to_result[feature.unique_id]
+
+            # 获取最大的 n 个 logit 的位置
+            n_best_start_index = _get_best_indexes(result['start_logits'], n_best_size)
+            n_best_end_index = _get_best_indexes(result['end_logits'], n_best_size)
+
+            if version_2_with_negative:
+                feature_null_score = result['start_logits'][0] + result['end_logits'][0]
+                if feature_null_score < score_null:
+                    score_null = feature_null_score
+                    min_null_feature_index = feature_index
+                    null_start_logit = result['start_logits'][0]
+                    null_end_logit = result['end_logits'][0]
+
+            # 对所有的 start_index 和 end_index 进行判断
+            # 筛选出所有可能形成答案的 start_index 和 end_index
+            for start_index in n_best_start_index:
+                for end_index in n_best_end_index:
+
+                    # 开始位置超过了 context 的长度, 非法 index
+                    if start_index >= len(feature.tokens):
+                        continue
+
+                    # 结束位置超过了 context 的长度, 非法 index
+                    if end_index >= len(feature.tokens):
+                        continue
+
+                    # 开始位置对应不到原文的位置, 非法 index
+                    if start_index not in feature.token_to_orig_map:
+                        continue
+
+                    # 结束位置对应不到原文的位置, 非法 index
+                    if end_index not in feature.token_to_orig_map:
+                        continue
+
+                    # 开始位置的 token 不是 max_content, 说明当前 feature 对应的 context 不在中间位置
+                    if not feature.token_is_max_context.get(start_index, False):
+                        continue
+
+                    # 开始位置在结束位置后面, 非法 index
+                    if end_index < start_index:
+                        continue
+
+                    # 通过上面的一系列过滤之后, 留下来的 index 都是合法的 index
+
+                    # 计算答案长度
+                    length = end_index - start_index + 1
+
+                    # 超过了最长长度, 则舍弃这条答案
+                    if length > max_answer_length:
+                        continue
+
+                    # 一个可能的答案的 index
+                    # 将其保存下来
+                    prelim_predictions.append(
+                        _PrelimPrediction(
+                            feature_index=feature_index,
+                            start_index=start_index,
+                            end_index=end_index,
+                            start_logit=result['start_logits'][start_index],
+                            end_logit=result['end_logits'][end_index]
+                        )
+                    )
+
+        if version_2_with_negative:
+            prelim_predictions.append(
+                _PrelimPrediction(
+                    feature_index=min_null_feature_index,
+                    start_index=0,
+                    end_index=0,
+                    start_logit=null_start_logit,
+                    end_logit=null_end_logit
+                )
+            )
+
+        # start_logit end_logit 的和越大就认为这个答案越好
+        prelim_predictions = sorted(
+            prelim_predictions,
+            key=lambda x: (x.start_logit + x.end_logit),
+            reverse=True
+        )
+
+        # 用于表示最好的 N 个预测结果之一
+        _NbestPrediction = collections.namedtuple(
+            'NbestPrediction', ['text', 'start_logit', 'end_logit']
+        )
+
+        # 已经见到过的预测结果
+        seen_predictions = {}
+
+        # 所有 n 个最好的结果
+        nbest = []
+
+        # 这里 for 循环的含义是:
+        # 根据前面挑选出的最好的 n 个 (start_index, end_index) 找出合适的 **原文中的连续文本**
+        for pred in prelim_predictions:
+            # 如果已经找出 n 个最好的结果, 则停止后续的寻找
+            if len(nbest) >= n_best_size:
+                break
+
+            # 当前预测结果来自的 feature
+            feature = cur_example_features[pred.feature_index]
+
+            # 有答案
+            if pred.start_index > 0:
+
+                # 答案对应的所有 tokens
+                tok_tokens = feature.tokens[pred.start_index: (pred.end_index + 1)]
+
+                # 答案在原始文章的 tokens 中的开始位置
+                orig_doc_start = feature.token_to_orig_map[pred.start_index]
+
+                # 答案在原始文章的 tokens 中的结束位置
+                orig_doc_end = feature.token_to_orig_map[pred.end_index]
+
+                # 答案在原始文章中对应的 tokens
+                orig_tokens = example.doc_tokens[orig_doc_start: (orig_doc_end + 1)]
+
+                # 将 tokens 合并
+                tok_text = " ".join(tok_tokens)
+
+                # De-tokenize WordPieces that have been split off.
+                # 删除所有由 WordPiece 分词生成的 ##
+                tok_text = tok_text.replace(" ##", "")
+                tok_text = tok_text.replace("##", "")
+
+                # Clean whitespace
+                tok_text = tok_text.strip()
+                tok_text = " ".join(tok_text.split())
+                orig_text = " ".join(orig_tokens)
+
+                final_text = get_final_text(
+                    tok_text, orig_text, do_lower_case=do_lower_case, verbose=verbose
+                )
+
+                # 如果当前答案已经出现过
+                if final_text in seen_predictions:
+                    continue
+
+                seen_predictions[final_text] = True
+
+            # 没答案(预测为 -1)
+            else:
+                final_text = ""
+                seen_predictions[final_text] = True
+
+            nbest.append(
+                _NbestPrediction(
+                    text=final_text,
+                    start_logit=pred.start_logit,
+                    end_logit=pred.end_logit
+                )
+            )
+
+        if version_2_with_negative:
+            if "" not in seen_predictions:
+                nbest.append(
+                    _NbestPrediction(
+                        text="",
+                        start_logit=null_start_logit,
+                        end_logit=null_end_logit
+                    )
+                )
+
+        if not nbest:
+            nbest.append(
+                _NbestPrediction(text='empty', start_logit=0.0, end_logit=0.0)
+            )
+
+        assert len(nbest) >= 1
+
+        total_scores = []
+        best_non_null_entry = None
+        for entry in nbest:
+            total_scores.append(entry.start_logit + entry.end_logit)
+            if not best_non_null_entry:
+                if entry.text:
+                    best_non_null_entry = entry
+
+        probs = _compute_softmax(total_scores)
+
+        nbest_json = []
+        for i, entry in enumerate(nbest):
+            output = collections.OrderedDict()
+            output['text'] = entry.text
+            output['probability'] = probs[i]
+            output['start_logit'] = entry.start_logit
+            output['end_logit'] = entry.end_logit
+            nbest_json.append(output)
+
+        assert len(nbest_json) >= 1
+
+        final_answer = ''
+        if not version_2_with_negative:
+            all_predictions[example.qas_id] = nbest_json[0]["text"]
+            final_answer = nbest_json[0]['text']
+        else:
+            if best_non_null_entry is not None:
+                score_diff = score_null - best_non_null_entry.start_logit - best_non_null_entry.end_logit
+                scores_diff_json[example.qas_id] = score_diff
+                if score_diff > null_score_diff_threshold:
+                    all_predictions[example.qas_id] = ""
+                    final_answer = ""
+                else:
+                    all_predictions[example.qas_id] = best_non_null_entry.text
+                    final_answer = best_non_null_entry.text
+            else:
+                logging.warning("best_non_null_entry is None")
+                scores_diff_json[example.qas_id] = score_null
+                all_predictions[example.qas_id] = ""
+                final_answer = ""
+
+        all_nbest_json[example.qas_id] = nbest_json
+
+        # 将答案写入 raw data -> paragraphs 中
+        paragraph_index = example.paragraph_index
+        sro_index = example.sro_index
+
+        if step == 'first':
+            paragraphs[paragraph_index]['pred_sros'][sro_index]['subject'] = final_answer
+        elif step == 'second':
+            paragraphs[paragraph_index]['pred_sros'][sro_index]['object'] = final_answer
+        else:
+            raise ValueError('step must be first or second')
+
+    raw_data['data'][0]['paragraphs'] = paragraphs
+    with tf.io.gfile.GFile(os.path.join(save_dir, prefix + 'results.json'), mode='w') as writer:
+        writer.write(json.dumps(raw_data, ensure_ascii=False, indent=2) + '\n')
+    writer.close()
+
+    with tf.io.gfile.GFile(os.path.join(save_dir, prefix + 'all_predictions.json'), mode='w') as writer:
+        writer.write(json.dumps(all_predictions, ensure_ascii=False, indent=2) + '\n')
+    writer.close()
+
+    with tf.io.gfile.GFile(os.path.join(save_dir, prefix + 'all_nbest.json'), mode='w') as writer:
+        writer.write(json.dumps(all_nbest_json, ensure_ascii=False, indent=2) + '\n')
+    writer.close()
+
+    with tf.io.gfile.GFile(os.path.join(save_dir, prefix + 'scores_diff.json'), mode='w') as writer:
+        writer.write(json.dumps(scores_diff_json, ensure_ascii=False, indent=2) + '\n')
+    writer.close()
+
+
 if __name__ == '__main__':
 
     # # 将 **上一步骤** 的训练数据集的推断结果转为当前步骤的训练数据
     # convert_last_step_results_for_train(
-    #     '../multi_turn_mrc_cls_task/results/for_infer/postprocessed/train_results.json',
-    #     'datasets/raw/for_train/last_task/train.json'
+    #     '../multi_turn_mrc_cls_task/infer_results/origin/postprocessed/train_results.json',
+    #     'datasets/raw/for_train/from_last_task/train.json'
     # )
     # # 将 **上一步骤** 的验证数据集的推断结果转为当前步骤的验证数据
     # convert_last_step_results_for_train(
-    #     '../multi_turn_mrc_cls_task/results/for_infer/postprocessed/valid_results.json',
-    #     'datasets/raw/for_train/last_task/valid.json'
+    #     '../multi_turn_mrc_cls_task/infer_results/origin/postprocessed/valid_results.json',
+    #     'datasets/raw/for_train/from_last_task/valid.json'
     # )
 
-    # 将 **上一步骤** 训练数据集的结果转为用于推断的 **原生数据**
+    # # 将 **上一步骤** 训练数据集的结果转为用于推断的 **原生数据**
     # convert_last_step_results_for_infer(
-    #     results_path='../multi_turn_mrc_cls_task/results/for_infer/postprocessed/train_results.json',
-    #     save_path='datasets/raw/for_infer/first_step/train.json',
+    #     results_path='../multi_turn_mrc_cls_task/infer_results/origin/postprocessed/train_results.json',
+    #     save_path='datasets/raw/for_infer/from_last_task/first_step/train.json',
     #     step='first'
-    # )
-
-    # 将 **上一步骤** 验证数据集的结果转为用于推断的 **原生数据**
-    # convert_last_step_results_for_infer(
-    #     results_path='../multi_turn_mrc_cls_task/results/for_infer/postprocessed/valid_results.json',
-    #     save_path='datasets/raw/for_infer/first_step/valid.json',
-    #     step='first'
-    # )
-
-    # # 为推断生成训练 tfrecord
-    # generate_tfrecord_from_json_file(
-    #     input_file_path='datasets/raw/for_infer/first_step/train.json',
-    #     vocab_file_path='../vocabs/bert-base-chinese-vocab.txt',
-    #     tfrecord_save_path='datasets/tfrecords/for_infer/first_step/train.tfrecord',
-    #     meta_save_path='datasets/tfrecords/for_infer/first_step/train_meta.json',
-    #     features_save_path='datasets/features/for_infer/first_step/train_features.pkl',
-    #     max_seq_len=165,
-    #     max_query_len=45,
-    #     doc_stride=128,
-    #     is_train=False
     # )
     #
-    # # 为推断生成验证 tfrecord
+    # # 将 **上一步骤** 验证数据集的结果转为用于推断的 **原生数据**
+    # convert_last_step_results_for_infer(
+    #     results_path='../multi_turn_mrc_cls_task/infer_results/origin/postprocessed/valid_results.json',
+    #     save_path='datasets/raw/for_infer/from_last_task/first_step/valid.json',
+    #     step='first'
+    # )
+
+    # 将第一步训练集的结果转为第二步推断的输入数据
+    # convert_last_step_results_for_infer(
+    #     results_path='infer_results/last_task/use_version_2/first_step/postprocessed/valid_results.json',
+    #     save_path='datasets/raw/for_infer/from_last_task/second_step/valid.json',
+    #     step='second'
+    # )
+
+    # # train / valid data for infer / last task / first step -> tfrecord
     # generate_tfrecord_from_json_file(
-    #     input_file_path='datasets/raw/for_infer/first_step/valid.json',
+    #     input_file_path='datasets/raw/for_infer/from_last_task/first_step/valid.json',
     #     vocab_file_path='../vocabs/bert-base-chinese-vocab.txt',
-    #     tfrecord_save_path='datasets/tfrecords/for_infer/first_step/valid.tfrecord',
-    #     meta_save_path='datasets/tfrecords/for_infer/first_step/valid_meta.json',
-    #     features_save_path='datasets/features/for_infer/first_step/valid_features.pkl',
+    #     tfrecord_save_path='datasets/tfrecords/for_infer/from_last_task/first_step/valid.tfrecord',
+    #     meta_save_path='datasets/tfrecords/for_infer/from_last_task/first_step/valid_meta.json',
+    #     features_save_path='datasets/features/for_infer/from_last_task/first_step/valid_features.pkl',
     #     max_seq_len=165,
     #     max_query_len=45,
     #     doc_stride=128,
-    #     is_train=False
+    #     is_train=False,
+    #     version_2_with_negative=True
+    # )
+
+    # train / valid data for infer / last task / second step -> tfrecord
+    # generate_tfrecord_from_json_file(
+    #     input_file_path='datasets/raw/for_infer/from_last_task/second_step/valid.json',
+    #     vocab_file_path='../vocabs/bert-base-chinese-vocab.txt',
+    #     tfrecord_save_path='datasets/tfrecords/for_infer/from_last_task/second_step/valid.tfrecord',
+    #     meta_save_path='datasets/tfrecords/for_infer/from_last_task/second_step/valid_meta.json',
+    #     features_save_path='datasets/features/for_infer/from_last_task/second_step/valid_features.pkl',
+    #     max_seq_len=165,
+    #     max_query_len=45,
+    #     doc_stride=128,
+    #     is_train=False,
+    #     version_2_with_negative=True
     # )
 
     # 将上一步骤训练数据的推断结果转为当前步骤的训练数据（含无答案问题）
     # convert_last_step_results_for_train(
-    #     results_path='../multi_turn_mrc_cls_task/results/for_infer/postprocessed/train_results.json',
+    #     results_path='../multi_turn_mrc_cls_task/infer_results/origin/postprocessed/train_results.json',
     #     save_path='datasets/raw/for_train/last_step/train.json'
     # )
     # 将上一步骤验证数据的推断结果转为当前步骤的验证数据（含无答案结果）
     # convert_last_step_results_for_train(
-    #     results_path='../multi_turn_mrc_cls_task/results/for_infer/postprocessed/valid_results.json',
+    #     results_path='../multi_turn_mrc_cls_task/infer_results/origin/postprocessed/valid_results.json',
     #     save_path='datasets/raw/for_train/last_step/valid.json'
     # )
 
-    # 处理 验证集的推断结果
-    # postprocess_results(
-    #     raw_data_path='datasets/raw/for_infer/first_step/valid.json',
-    #     features_path='datasets/features/for_infer/first_step/valid_features.pkl',
-    #     results_path='results/for_infer/raw/first_step/valid_results.json',
-    #     save_path='results/for_infer/postprocessed/first_step/valid_results.json'
+    # # 为上一步结果转换的训练数据生成 tfrecord
+    # generate_tfrecord_from_json_file(
+    #     input_file_path='datasets/raw/for_train/from_last_task/train.json',
+    #     vocab_file_path='../vocabs/bert-base-chinese-vocab.txt',
+    #     tfrecord_save_path='datasets/tfrecords/for_train/from_last_task/train.tfrecord',
+    #     meta_save_path='datasets/tfrecords/for_train/from_last_task/train_meta.json',
+    #     features_save_path='datasets/features/for_train/train_features.pkl',
+    #     max_seq_len=165,
+    #     max_query_len=45,
+    #     doc_stride=128,
+    #     is_train=True,
+    #     version_2_with_negative=True
+    # )
+    # # 为上一步结果转换的验证数据生成 tfrecord
+    # generate_tfrecord_from_json_file(
+    #     input_file_path='datasets/raw/for_train/from_last_task/valid.json',
+    #     vocab_file_path='../vocabs/bert-base-chinese-vocab.txt',
+    #     tfrecord_save_path='datasets/tfrecords/for_train/from_last_task/valid.tfrecord',
+    #     meta_save_path='datasets/tfrecords/for_train/from_last_task/valid_meta.json',
+    #     features_save_path='datasets/features/for_train/valid_features.pkl',
+    #     max_seq_len=165,
+    #     max_query_len=45,
+    #     doc_stride=128,
+    #     is_train=True,
+    #     version_2_with_negative=True
     # )
 
-    # 为上一步结果转换的训练数据生成 tfrecord
-    generate_tfrecord_from_json_file(
-        input_file_path='datasets/raw/for_train/last_task/train.json',
-        vocab_file_path='../vocabs/bert-base-chinese-vocab.txt',
-        tfrecord_save_path='datasets/tfrecords/for_train/last_task/train.tfrecord',
-        meta_save_path='datasets/tfrecords/for_train/last_task/train_meta.json',
-        features_save_path='datasets/features/for_train/train_features.pkl',
-        max_seq_len=165,
-        max_query_len=45,
-        doc_stride=128,
-        is_train=True,
-        version_2_with_negative=True
-    )
-    # 为上一步结果转换的验证数据生成 tfrecord
-    generate_tfrecord_from_json_file(
-        input_file_path='datasets/raw/for_train/last_task/valid.json',
-        vocab_file_path='../vocabs/bert-base-chinese-vocab.txt',
-        tfrecord_save_path='datasets/tfrecords/for_train/last_task/valid.tfrecord',
-        meta_save_path='datasets/tfrecords/for_train/last_task/valid_meta.json',
-        features_save_path='datasets/features/for_train/valid_features.pkl',
-        max_seq_len=165,
-        max_query_len=45,
-        doc_stride=128,
-        is_train=True,
+    # 推断第一步
+    # postprocess_results(
+    #     raw_data_path='datasets/raw/for_infer/from_last_task/first_step/train.json',
+    #     features_path='datasets/features/for_infer/from_last_task/first_step/train_features.pkl',
+    #     results_path='infer_results/last_task/use_version_2/first_step/raw/train_results.json',
+    #     save_dir='infer_results/last_task/use_version_2/first_step/postprocessed',
+    #     prefix='train_',
+    #     n_best_size=20,
+    #     max_answer_length=15,
+    #     do_lower_case=True,
+    #     version_2_with_negative=True,
+    # )
+
+    # 推断第二步
+    postprocess_results(
+        raw_data_path='datasets/raw/for_infer/from_last_task/second_step/train.json',
+        features_path='datasets/features/for_infer/from_last_task/second_step/train_features.pkl',
+        results_path='infer_results/last_task/use_version_2/second_step/raw/train_results.json',
+        save_dir='infer_results/last_task/use_version_2/second_step/postprocessed',
+        prefix='train_',
+        n_best_size=20,
+        max_answer_length=15,
+        do_lower_case=True,
+        step='second',
         version_2_with_negative=True
     )
     pass
