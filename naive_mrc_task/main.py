@@ -351,10 +351,16 @@ if __name__ == '__main__':
     #     tfrecord_path='datasets/tfrecords/for_infer/from_last_task/first_step/valid.tfrecord',
     #     save_path='infer_results/last_task/use_version_2/first_step/raw/valid_results.json'
     # )
+    # task.predict_tfrecord(
+    #     inference_model_dir='saved_models/version_2',
+    #     tfrecord_path='datasets/tfrecords/for_infer/from_last_task/second_step/train.tfrecord',
+    #     save_path='infer_results/last_task/use_version_2/second_step/raw/train_results.json'
+    # )
+
     task.predict_tfrecord(
-        inference_model_dir='saved_models/version_2',
-        tfrecord_path='datasets/tfrecords/for_infer/from_last_task/second_step/train.tfrecord',
-        save_path='infer_results/last_task/use_version_2/second_step/raw/train_results.json'
+        inference_model_dir='saved_models/version_1',
+        tfrecord_path='datasets/tfrecords/for_infer/from_origin/first_step/valid.tfrecord',
+        save_path=''
     )
 
     # task.train()

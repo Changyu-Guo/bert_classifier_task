@@ -437,7 +437,7 @@ def compute_prf(features_path, results_path):
 if __name__ == '__main__':
     # generate train tfrecord for train
     # generate_tfrecord_from_json_file(
-    #     input_file_path='datasets/raw/train.json',
+    #     input_file_path='datasets/raw/init-train-train-squad-format.json',
     #     vocab_file_path='../vocabs/bert-base-chinese-vocab.txt',
     #     output_save_path='datasets/tfrecords/for_train/train.tfrecord',
     #     meta_save_path='datasets/tfrecords/for_train/train_meta.json',
@@ -448,7 +448,7 @@ if __name__ == '__main__':
 
     # generate train tfrecord for infer
     # generate_tfrecord_from_json_file(
-    #     input_file_path='datasets/raw/train.json',
+    #     input_file_path='datasets/raw/init-train-train-squad-format.json',
     #     vocab_file_path='../vocabs/bert-base-chinese-vocab.txt',
     #     output_save_path='datasets/tfrecords/origin/train.tfrecord',
     #     meta_save_path='datasets/tfrecords/origin/train_meta.json',
@@ -460,7 +460,7 @@ if __name__ == '__main__':
     # generate valid tfrecord for train and infer
     # (valid data 无论是 train 还是 infer 都是一样的)
     # generate_tfrecord_from_json_file(
-    #     input_file_path='datasets/raw/valid.json',
+    #     input_file_path='datasets/raw/init-train-valid-squad-format.json',
     #     vocab_file_path='../vocabs/bert-base-chinese-vocab.txt',
     #     output_save_path='datasets/tfrecords/for_train/valid.tfrecord',
     #     meta_save_path='datasets/tfrecords/for_train/valid_meta.json',
@@ -470,7 +470,7 @@ if __name__ == '__main__':
     # )
 
     # generate_tfrecord_from_json_file(
-    #     input_file_path='datasets/raw/valid.json',
+    #     input_file_path='datasets/raw/init-train-valid-squad-format.json',
     #     vocab_file_path='../vocabs/bert-base-chinese-vocab.txt',
     #     output_save_path='datasets/tfrecords/origin/valid.tfrecord',
     #     meta_save_path='datasets/tfrecords/origin/valid_meta.json',
@@ -481,7 +481,7 @@ if __name__ == '__main__':
 
     # 处理训练数据的推断结果
     # postprocess_results(
-    #     raw_data_path='datasets/raw/train.json',
+    #     raw_data_path='datasets/raw/init-train-train-squad-format.json',
     #     features_path='datasets/features/origin/train_features.pkl',
     #     results_path='infer_results/origin/raw/train_results.json',
     #     save_path='infer_results/origin/postprocessed/train_results.json'
@@ -489,7 +489,7 @@ if __name__ == '__main__':
 
     # 处理验证集的推断结果
     # postprocess_results(
-    #     raw_data_path='datasets/raw/valid.json',
+    #     raw_data_path='datasets/raw/init-train-valid-squad-format.json',
     #     features_path='datasets/features/origin/valid_features.pkl',
     #     results_path='infer_results/origin/raw/valid_results.json',
     #     save_path='infer_results/origin/postprocessed/valid_results.json'

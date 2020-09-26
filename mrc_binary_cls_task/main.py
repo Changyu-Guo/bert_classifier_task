@@ -200,6 +200,60 @@ class BiCLSTask:
 
         return callbacks
 
+    def predict_tfrecord(self, inference_model_dir, tfrecord_path, save_path):
+        dataset = read_and_batch_from_tfrecord(
+            filepath=tfrecord_path,
+            max_seq_len=self.max_seq_len,
+            is_training=False,
+            repeat=False,
+            shuffle=False,
+            batch_size=self.predict_batch_size
+        )
+
+        with get_strategy_scope(self.distribution_strategy):
+            model = create_model(is_train=False, use_pretrain=False)
+            checkpoint = tf.train.Checkpoint(model=model)
+            checkpoint.restore(
+                tf.train.latest_checkpoint(
+                    inference_model_dir
+                )
+            )
+            logging.info('Loading checkpoint {} from {}'.format(
+                tf.train.latest_checkpoint(inference_model_dir),
+                inference_model_dir
+            ))
+
+        all_results = []
+        for index, data in enumerate(dataset):
+            unique_ids = data.pop('unique_ids')
+            example_indices = data.pop('example_indices')
+            model_output = model.predict(
+                map_data_to_model_infer(data)
+            )
+            batch_probs = model_output['probs']
+
+            for result in self.generate_predict_item(
+                unique_ids=unique_ids,
+                example_indices=example_indices,
+                batch_probs=batch_probs
+            ):
+                all_results.append(result)
+
+            print(index)
+
+        with tf.io.gfile.GFile(save_path, mode='w') as writer:
+            writer.write(json.dumps(all_results, ensure_ascii=False, indent=2) + '\n')
+        writer.close()
+
+    def generate_predict_item(self, unique_ids, example_indices, batch_probs):
+
+        for unique_id, example_index, prob in zip(unique_ids, example_indices, batch_probs):
+            yield dict(
+                unique_id=unique_id.numpy().item(),
+                example_index=example_index.numpy().item(),
+                prob=prob[0].item()
+            )
+
 
 # Global Variables ############
 
