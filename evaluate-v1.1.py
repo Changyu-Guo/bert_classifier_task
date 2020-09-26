@@ -77,8 +77,9 @@ def evaluate(dataset, predictions):
 
 
 if __name__ == '__main__':
-    dataset_file = 'common-datasets/preprocessed_datasets/mrc_valid.json'
-    prediction_file = 'inference_results/mrc_results/bert-base-chinese-epochs-3/only_text_predictions.json'
+    dataset_file = 'naive_mrc_task/datasets/raw/for_infer/from_origin/first_step/valid.json'
+    prediction_file = 'naive_mrc_task/infer_results/origin/' \
+                      'use_version_1/first_step/postprocessed/valid_all_predictions.json'
     with open(dataset_file, encoding='utf-8') as dataset_file:
         dataset_json = json.load(dataset_file)
         dataset = dataset_json['data']

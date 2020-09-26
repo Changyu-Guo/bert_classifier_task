@@ -359,8 +359,8 @@ if __name__ == '__main__':
 
     task.predict_tfrecord(
         inference_model_dir='saved_models/version_1',
-        tfrecord_path='datasets/tfrecords/for_infer/from_origin/first_step/valid.tfrecord',
-        save_path=''
+        tfrecord_path='datasets/tfrecords/for_infer/from_origin/first_and_second_step/valid.tfrecord',
+        save_path='infer_results/origin/use_version_1/first_and_second_step/raw/valid_results.json'
     )
 
     # task.train()

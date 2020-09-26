@@ -60,6 +60,10 @@ def convert_origin_data_for_infer(origin_data_path, save_path, step='first'):
             s = sro['subject']
             r = sro['relation']
 
+            # 将当前 origin relation 添加到 pred relation 中
+            # 方便后续代码的统一编写
+            paragraphs[paragraph_index]['pred_sros'].append({'relation': r})
+
             relation_questions = relation_questions_dict[r]
 
             question_a = relation_questions.question_a
@@ -1180,6 +1184,8 @@ def postprocess_results(
             paragraphs[paragraph_index]['pred_sros'][sro_index]['subject'] = final_answer
         elif step == 'second':
             paragraphs[paragraph_index]['pred_sros'][sro_index]['object'] = final_answer
+        elif step == 'first_and_second':
+            pass
         else:
             raise ValueError('step must be first or second')
 
@@ -1328,16 +1334,35 @@ if __name__ == '__main__':
     #     version_2_with_negative=True
     # )
 
-    generate_tfrecord_from_json_file(
-        input_file_path='datasets/raw/for_infer/from_origin/first_and_second_step/valid.json',
-        vocab_file_path='../vocabs/bert-base-chinese-vocab.txt',
-        tfrecord_save_path='datasets/tfrecords/for_infer/from_origin/first_and_second_step/valid.tfrecord',
-        meta_save_path='datasets/tfrecords/for_infer/from_origin/first_and_second_step/valid_meta.json',
-        features_save_path='datasets/features/for_infer/from_origin/first_and_second_step/valid_features.pkl',
-        max_seq_len=165,
-        max_query_len=45,
-        doc_stride=128,
-        is_train=False,
+    # convert_origin_data_for_infer(
+    #     origin_data_path='../common-datasets/init-train-valid-squad-format.json',
+    #     save_path='datasets/raw/for_infer/from_origin/second_step/valid.json',
+    #     step='second'
+    # )
+
+    # generate_tfrecord_from_json_file(
+    #     input_file_path='datasets/raw/for_infer/from_origin/second_step/valid.json',
+    #     vocab_file_path='../vocabs/bert-base-chinese-vocab.txt',
+    #     tfrecord_save_path='datasets/tfrecords/for_infer/from_origin/second_step/valid.tfrecord',
+    #     meta_save_path='datasets/tfrecords/for_infer/from_origin/second_step/valid_meta.json',
+    #     features_save_path='datasets/features/for_infer/from_origin/second_step/valid_features.pkl',
+    #     max_seq_len=165,
+    #     max_query_len=45,
+    #     doc_stride=128,
+    #     is_train=False,
+    #     version_2_with_negative=False
+    # )
+
+    postprocess_results(
+        raw_data_path='datasets/raw/for_infer/from_origin/second_step/valid.json',
+        features_path='datasets/features/for_infer/from_origin/second_step/valid_features.pkl',
+        results_path='infer_results/origin/use_version_1/second_step/raw/valid_results.json',
+        save_dir='infer_results/origin/use_version_1/second_step/postprocessed',
+        prefix='valid_',
+        n_best_size=20,
+        max_answer_length=15,
+        do_lower_case=True,
+        step='second',
         version_2_with_negative=False
     )
 
