@@ -213,6 +213,60 @@ def generate_tfrecord_from_json_file(
     writer.close()
 
 
+def postprocess_results(
+        raw_data_path,
+        features_path,
+        results_path,
+        save_path
+):
+    with tf.io.gfile.GFile(raw_data_path, mode='r') as reader:
+        raw_data = json.load(reader)
+    reader.close()
+    paragraphs = raw_data['data'][0]['paragraphs']
+
+    examples = read_examples_from_last_step_results(
+        last_step_result_path=raw_data_path,
+        is_training=False
+    )
+
+    with gzip.open(features_path, mode='r') as reader:
+        features = pickle.load(reader)
+    reader.close()
+
+    with tf.io.gfile.GFile(results_path, mode='r') as reader:
+        results = json.load(reader)
+    reader.close()
+
+    assert len(examples) == len(features) == len(results)
+
+    example_index_to_features = {}
+    for feature in features:
+        example_index_to_features[feature.example_index] = feature
+
+    unique_id_to_result = {}
+    for result in results:
+        unique_id_to_result[result['unique_id']] = result
+
+    for example_index, example in enumerate(examples):
+
+        cur_example_feature = example_index_to_features[example_index]
+
+        result = unique_id_to_result[cur_example_feature.unique_id]
+
+        paragraph_index = example.paragraph_index
+        sro_index = example.sro_index
+
+        prob = result['prob']
+        if prob >= 0.5:
+            paragraphs[paragraph_index]['pred_sros'][sro_index]['is_valid'] = 1
+
+    raw_data['data'][0]['paragraphs'] = paragraphs
+
+    with tf.io.gfile.GFile(save_path, mode='w') as writer:
+        writer.write(json.dumps(raw_data, ensure_ascii=False, indent=2) + '\n')
+    writer.close()
+
+
 if __name__ == '__main__':
     generate_tfrecord_from_json_file(
         input_file_path='../naive_mrc_task/infer_results/last_task/use_version_2/'

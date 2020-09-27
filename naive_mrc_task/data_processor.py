@@ -21,11 +21,112 @@ from common_data_utils import extract_examples_dict_from_relation_questions
 from common_data_utils import read_init_train_train_examples
 
 
-def convert_origin_data_for_train(origin_data_path, save_path):
+def convert_origin_data_for_train(origin_data_path, save_path, step='first'):
     """
         将原始的数据转换为当前步骤的训练数据, 即只使用正确的数据来训练模型, 不考虑其他的情况
     """
-    pass
+    if step not in ['first', 'second', 'first_and_second']:
+        raise ValueError('step must be first or second or first_and_second')
+
+    # relation -> questions
+    relation_questions_dict = extract_examples_dict_from_relation_questions(
+        init_train_table_path='../common-datasets/init-train-table.txt',
+        relation_questions_path='../common-datasets/relation_questions.txt'
+    )
+
+    with tf.io.gfile.GFile(origin_data_path, mode='r') as reader:
+        init_train_train = json.load(reader)
+    reader.close()
+
+    paragraphs = init_train_train['data'][0]['paragraphs']
+
+    qas_id = 0
+    for paragraph_index, paragraph in enumerate(paragraphs):
+
+        context = paragraph['context']
+
+        paragraphs[paragraph_index]['qas'] = []
+
+        origin_sros = paragraph['origin_sros']
+
+        for sro_index, sro in enumerate(origin_sros):
+            s = sro['subject']
+            r = sro['relation']
+            o = sro['object']
+
+            # 确定第一个问题的答案开始位置
+            s_start_pos = context.find(s)
+
+            # 确定第二个问题的答案开始位置
+            o_start_pos = context.find(o)
+
+            # 将当前 origin relation 添加到 pred relation 中
+            # 方便后续代码的统一编写
+            paragraphs[paragraph_index]['pred_sros'].append({'relation': r})
+
+            relation_questions = relation_questions_dict[r]
+
+            question_a = relation_questions.question_a
+            question_b = relation_questions.question_b.replace('subject', s)
+
+            # 第一个推断步骤中只使用到第一个问题
+            if step == 'first':
+                squad_json_qas_item = {
+                    'question': question_a,
+                    'answers': [{
+                        'text': s,
+                        'answer_start': s_start_pos
+                    }],
+                    'id': 'id_' + str(qas_id),
+                    'sro_index': sro_index
+                }
+                qas_id += 1
+                paragraphs[paragraph_index]['qas'].append(squad_json_qas_item)
+
+            if step == 'second':
+                squad_json_qas_item = {
+                    'question': question_b,
+                    'answers': [{
+                        'text': o,
+                        'answer_start': o_start_pos
+                    }],
+                    'id': 'id_' + str(qas_id),
+                    'sro_index': sro_index
+                }
+                qas_id += 1
+                paragraphs[paragraph_index]['qas'].append(squad_json_qas_item)
+
+            if step == 'first_and_second':
+                squad_json_qas_item = {
+                    'question': question_a,
+                    'answers': [{
+                        'text': s,
+                        'answer_start': s_start_pos
+                    }],
+                    'question_type': 'a',
+                    'id': 'id_' + str(qas_id),
+                    'sro_index': sro_index
+                }
+                qas_id += 1
+                paragraphs[paragraph_index]['qas'].append(squad_json_qas_item)
+
+                squad_json_qas_item = {
+                    'question': question_b,
+                    'answers': [{
+                        'text': o,
+                        'answer_start': o_start_pos
+                    }],
+                    'question_type': 'b',
+                    'id': 'id_' + str(qas_id),
+                    'sro_index': sro_index
+                }
+                qas_id += 1
+                paragraphs[paragraph_index]['qas'].append(squad_json_qas_item)
+
+    init_train_train['data'][0]['paragraphs'] = paragraphs
+    with tf.io.gfile.GFile(save_path, mode='w') as writer:
+        writer.write(json.dumps(init_train_train, ensure_ascii=False, indent=2) + '\n')
+    writer.close()
 
 
 # 所有的 ..._for_infer 函数都需要指定是为第一步推断准备数据还是为第二步推断准备数据
@@ -1340,6 +1441,12 @@ if __name__ == '__main__':
     #     step='second'
     # )
 
+    convert_origin_data_for_train(
+        origin_data_path='../common-datasets/init-train-valid-squad-format.json',
+        save_path='datasets/raw/for_train/from_origin/second_step/valid.json',
+        step='second'
+    )
+
     # generate_tfrecord_from_json_file(
     #     input_file_path='datasets/raw/for_infer/from_origin/second_step/valid.json',
     #     vocab_file_path='../vocabs/bert-base-chinese-vocab.txt',
@@ -1353,17 +1460,17 @@ if __name__ == '__main__':
     #     version_2_with_negative=False
     # )
 
-    postprocess_results(
-        raw_data_path='datasets/raw/for_infer/from_origin/second_step/valid.json',
-        features_path='datasets/features/for_infer/from_origin/second_step/valid_features.pkl',
-        results_path='infer_results/origin/use_version_1/second_step/raw/valid_results.json',
-        save_dir='infer_results/origin/use_version_1/second_step/postprocessed',
-        prefix='valid_',
-        n_best_size=20,
-        max_answer_length=15,
-        do_lower_case=True,
-        step='second',
-        version_2_with_negative=False
-    )
+    # postprocess_results(
+    #     raw_data_path='datasets/raw/for_infer/from_origin/second_step/valid.json',
+    #     features_path='datasets/features/for_infer/from_origin/second_step/valid_features.pkl',
+    #     results_path='infer_results/origin/use_version_1/second_step/raw/valid_results.json',
+    #     save_dir='infer_results/origin/use_version_1/second_step/postprocessed',
+    #     prefix='valid_',
+    #     n_best_size=20,
+    #     max_answer_length=15,
+    #     do_lower_case=True,
+    #     step='second',
+    #     version_2_with_negative=False
+    # )
 
     pass
