@@ -14,6 +14,96 @@ def convert_last_step_results_for_train(results_path, save_path):
     pass
 
 
+def convert_last_step_results_for_valid(results_path, save_path):
+
+    # 加载 relation 对应的 questions
+    relation_questions_dict = extract_examples_dict_from_relation_questions(
+        init_train_table_path='../common-datasets/init-train-table.txt',
+        relation_questions_path='../common-datasets/relation_questions.txt'
+    )
+
+    with tf.io.gfile.GFile(results_path, mode='r') as reader:
+        results = json.load(reader)
+    reader.close()
+    paragraphs = results['data'][0]['paragraphs']
+
+    qas_id = 0
+
+    for paragraph_index, paragraph in enumerate(paragraphs):
+
+        # 在为任何一项任务构建问题的时候，都需要清空之前的问答
+        paragraphs[paragraph_index]['qas'] = []
+
+        origin_sros = paragraph['origin_sros']
+        pred_sros = paragraph['pred_sros']
+        new_pred_sros = []
+
+        origin_three_tuples = []
+
+        # 过滤掉已经废弃的 sro
+        for index, sro in enumerate(pred_sros):
+            if not sro.get('object', False):
+                continue
+
+            if sro['subject'] == '':
+                continue
+
+            new_pred_sros.append(sro)
+        # 刷新 pred_sros, 留下所有合法的
+        paragraphs[paragraph_index]['pred_sros'] = new_pred_sros
+
+        # 构造正样本
+        for sro_index, sro in enumerate(origin_sros):
+            s = sro['subject']
+            r = sro['relation']
+            o = sro['object']
+            origin_three_tuples.append(s + r + o)
+
+            relation_questions = relation_questions_dict[r]
+            question_c = relation_questions.question_c
+            question_c = question_c.replace('subject', s).replace('object', o)
+
+            squad_json_qas_item = {
+                'question': question_c,
+                'question_type': 'a',
+                'is_valid': 1,
+                'id': 'id_' + str(qas_id),
+                'sro_index': sro_index,
+            }
+            qas_id += 1
+            paragraphs[paragraph_index]['qas'].append(squad_json_qas_item)
+
+        # 构造负样本
+        for sro_index, sro in enumerate(new_pred_sros):
+            s = sro['subject']
+            r = sro['relation']
+            o = sro['object']
+
+            three_tuple = s + r + o
+            if three_tuple in origin_three_tuples:
+                continue
+
+            relation_questions = relation_questions_dict[r]
+            question_c = relation_questions.question_c
+            question_c = question_c.replace('subject', s).replace('object', o)
+
+            squad_json_qas_item = {
+                'question': question_c,
+                'question_type': 'b',
+                'is_valid': 0,
+                'id': 'id_' + str(qas_id),
+                'sro_index': sro_index
+            }
+            qas_id += 1
+            paragraphs[paragraph_index]['qas'].append(squad_json_qas_item)
+
+    results['data'][0]['paragraphs'] = paragraphs
+
+    with tf.io.gfile.GFile(save_path, mode='w') as writer:
+        writer.write(json.dumps(results, ensure_ascii=False, indent=2) + '\n')
+    writer.close()
+
+
 def convert_last_step_results_for_infer(results_path, save_path):
 
     relation_questions_dict = extract_examples_dict_from_relation_questions(
@@ -359,15 +449,15 @@ def postprocess_results(
 
 
 if __name__ == '__main__':
-    # generate_tfrecord_from_json_file(
-    #     input_file_path='datasets/from_last_version_1/raw/valid.json',
-    #     vocab_file_path='../vocabs/bert-base-chinese-vocab.txt',
-    #     tfrecord_save_path='datasets/from_last_version_1/tfrecords/for_infer/valid.tfrecord',
-    #     meta_save_path='datasets/from_last_version_1/tfrecords/for_infer/valid_meta.json',
-    #     features_save_path='datasets/from_last_version_1/features/for_infer/valid_features.pkl',
-    #     max_seq_len=165,
-    #     is_train=False
-    # )
+    generate_tfrecord_from_json_file(
+        input_file_path='datasets/from_last_version_2/raw/for_valid/valid.json',
+        vocab_file_path='../vocabs/bert-base-chinese-vocab.txt',
+        tfrecord_save_path='datasets/from_last_version_2/tfrecords/for_valid/valid.tfrecord',
+        meta_save_path='datasets/from_last_version_2/tfrecords/for_valid/valid_meta.json',
+        features_save_path='datasets/from_last_version_2/features/for_valid/valid_features.pkl',
+        max_seq_len=165,
+        is_train=False
+    )
 
     # convert_last_step_results_for_infer(
     #     results_path='../naive_mrc_task/infer_results/last_task/use_version_1/second_step/postprocessed/valid_results'
@@ -375,11 +465,17 @@ if __name__ == '__main__':
     #     save_path='datasets/from_last_version_1/raw/valid.json'
     # )
 
-    postprocess_results(
-        raw_data_path='datasets/from_last_version_1/raw/valid.json',
-        features_path='datasets/from_last_version_1/features/for_infer/valid_features.pkl',
-        results_path='infer_results/version_1/raw/valid_results.json',
-        save_path='infer_results/version_1/postprocessed/valid_results.json'
-    )
+    # convert_last_step_results_for_valid(
+    #     results_path='../naive_mrc_task/infer_results/last_task/use_version_2/second_step/postprocessed/'
+    #                  'valid_results.json',
+    #     save_path='datasets/from_last_version_2/raw/for_valid/valid.json'
+    # )
+
+    # postprocess_results(
+    #     raw_data_path='datasets/from_last_version_1/raw/for_infer/valid.json',
+    #     features_path='datasets/from_last_version_1/features/for_infer/valid_features.pkl',
+    #     results_path='infer_results/version_1/raw/valid_results.json',
+    #     save_path='infer_results/version_1/postprocessed/valid_results.json'
+    # )
 
     pass
