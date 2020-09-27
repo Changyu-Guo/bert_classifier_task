@@ -1,0 +1,18 @@
+raw -> for_train:
+
+raw 下面存放的数据即为待处理为 tfrecord 的数据
+
+而 for train 则表示当前目录下的数据处理成 tfrecord 之后, 会被用作模型的训练
+
+所以这个文件夹下的数据都是带有标签的
+
+当然 for train 中并不是仅仅包含训练集, 也包含验证集(带标签, 用于在训练过程中计算 valid loss)
+
+for train 文件夹下有细分为两个文件夹:
+    1. from last task
+    2. from origin
+
+from last task 表示里面的数据是从上一个任务的推断结果转换过来的 (也就是说会包含一些不正确的 relation)
+
+from origin 表示里面的数据是直接从 origin data 中转换过来的, 没有经过上一个任务的推断
+因此该文件夹下的数据集里面的 relation 都是正确的

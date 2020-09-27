@@ -3,8 +3,7 @@
 import json
 import tensorflow as tf
 
-# INFERENCE_RESULTS_PATH = 'inference_results/mrc_results/in_use/second_step/valid_results.json'
-INFERENCE_RESULTS_PATH = 'inference_results/bi_cls_results/valid_results.json'
+INFERENCE_RESULTS_PATH = 'mrc_binary_cls_task/infer_results/version_1/postprocessed/valid_results.json'
 
 with tf.io.gfile.GFile(INFERENCE_RESULTS_PATH, mode='r') as reader:
     results = json.load(reader)

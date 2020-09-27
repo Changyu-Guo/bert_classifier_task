@@ -1376,17 +1376,17 @@ if __name__ == '__main__':
     # )
 
     # convert_last_step_results_for_infer(
-    #     results_path='infer_results/origin/use_version_2/first_step/postprocessed/valid_results.json',
-    #     save_path='datasets/raw/for_infer/from_origin/second_step/from_first_step/use_version_2/valid.json',
+    #     results_path='infer_results/last_task/use_version_1/first_step/postprocessed/valid_results.json',
+    #     save_path='datasets/raw/for_infer/from_last_task/second_step/from_version_1/valid.json',
     #     step='second'
     # )
 
     # generate_tfrecord_from_json_file(
-    #     input_file_path='datasets/raw/for_infer/from_origin/second_step/from_first_step/use_version_2/valid.json',
+    #     input_file_path='datasets/raw/for_infer/from_last_task/second_step/from_version_1/valid.json',
     #     vocab_file_path='../vocabs/bert-base-chinese-vocab.txt',
-    #     tfrecord_save_path='datasets/tfrecords/for_infer/from_origin/second_step/from_first_step/use_version_2/valid.tfrecord',
-    #     meta_save_path='datasets/tfrecords/for_infer/from_origin/second_step/from_first_step/use_version_2/valid_meta.json',
-    #     features_save_path='datasets/features/for_infer/from_origin/second_step/from_first_step/use_version_2/valid_features.pkl',
+    #     tfrecord_save_path='datasets/tfrecords/for_infer/from_last_task/second_step/from_version_1/valid.tfrecord',
+    #     meta_save_path='datasets/tfrecords/for_infer/from_last_task/second_step/from_version_1/valid_meta.json',
+    #     features_save_path='datasets/features/for_infer/from_last_task/second_step/from_version_1/valid_features.pkl',
     #     max_seq_len=165,
     #     max_query_len=45,
     #     doc_stride=128,
@@ -1396,16 +1396,16 @@ if __name__ == '__main__':
 
     # 推断第一步
     postprocess_results(
-        raw_data_path='datasets/raw/for_infer/from_last_task/first_step/valid.json',
-        features_path='datasets/features/for_infer/from_last_task/first_step/valid_features.pkl',
-        results_path='infer_results/last_task/use_version_1/first_step/raw/valid_results.json',
-        save_dir='infer_results/last_task/use_version_1/first_step/postprocessed',
+        raw_data_path='datasets/raw/for_infer/from_last_task/second_step/from_version_1/valid.json',
+        features_path='datasets/features/for_infer/from_last_task/second_step/from_version_1/valid_features.pkl',
+        results_path='infer_results/last_task/use_version_1/second_step/raw/valid_results.json',
+        save_dir='infer_results/last_task/use_version_1/second_step/postprocessed',
         prefix='valid_',
         n_best_size=20,
-        max_answer_length=15,
+        max_answer_length=5,
         do_lower_case=True,
-        step='first',
-        version_2_with_negative=False,
+        step='second',
+        version_2_with_negative=False
     )
 
     pass

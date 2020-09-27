@@ -325,7 +325,7 @@ if __name__ == '__main__':
     task = main()
 
     task.predict_tfrecord(
-        inference_model_dir='saved_models/version_2',
-        tfrecord_path='datasets/from_last_version_2/tfrecords/for_infer/valid.tfrecord',
-        save_path='infer_results/version_2/raw/valid_results.json'
+        inference_model_dir='saved_models/version_1',
+        tfrecord_path='datasets/from_last_version_1/tfrecords/for_infer/valid.tfrecord',
+        save_path='infer_results/version_1/raw/valid_results.json'
     )
