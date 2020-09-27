@@ -324,4 +324,6 @@ def main():
 if __name__ == '__main__':
     task = main()
 
-    task.train()
+    task.predict_tfrecord(
+        inference_model_dir='saved_models/version_2',
+    )

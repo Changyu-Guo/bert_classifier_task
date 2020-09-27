@@ -9,6 +9,70 @@ from tokenizers import BertWordPieceTokenizer
 from common_data_utils import extract_examples_dict_from_relation_questions
 
 
+def convert_last_step_results_for_train(results_path, save_path):
+    pass
+
+
+def convert_last_step_results_for_infer(results_path, save_path):
+
+    relation_questions_dict = extract_examples_dict_from_relation_questions(
+        init_train_table_path='../common-datasets/init-train-table.txt',
+        relation_questions_path='../common-datasets/relation_questions.txt'
+    )
+
+    with tf.io.gfile.GFile(results_path, mode='r') as reader:
+        results = json.load(reader)
+    reader.close()
+
+    paragraphs = results['data'][0]['paragraphs']
+
+    qas_id = 0
+
+    for paragraph_index, paragraph in enumerate(paragraphs):
+
+        paragraphs[paragraph_index]['qas'] = []
+
+        origin_sros = paragraph['origin_sros']
+
+        pred_sros = paragraph['pred_sros']
+        new_pred_sros = []
+
+        origin_three_tuples = []
+        for index, sro in origin_sros:
+            s = sro['subject']
+            r = sro['object']
+            o = sro['']
+
+        for index, sro in enumerate(pred_sros):
+            if not sro.get('object', False):
+                continue
+
+            if sro['subject'] == '':
+                continue
+
+            new_pred_sros.append(sro)
+
+        paragraphs[paragraph_index]['pred_sros'] = new_pred_sros
+
+        for index, sro in enumerate(new_pred_sros):
+            s = sro['subject']
+            r = sro['relation']
+            o = sro['object']
+
+            relation_questions = relation_questions_dict[r]
+            question_c = relation_questions.question_c.replace('subject', s).replace('object', o)
+
+            squad_json_qas_item = {
+                'question': question_c,
+                'id': 'id_' + str(qas_id),
+                'sro_index': index,
+                'is_valid': 0
+            }
+            qas_id += 1
+            paragraphs[paragraph_index]['qas'].append(squad_json_qas_item)
+
+
+
 class BiCLSExample:
     def __init__(self, paragraph_index, sro_index, text, question, is_valid):
         self.paragraph_index = paragraph_index

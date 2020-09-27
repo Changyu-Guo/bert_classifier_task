@@ -358,9 +358,10 @@ if __name__ == '__main__':
     # )
 
     task.predict_tfrecord(
-        inference_model_dir='saved_models/version_1',
-        tfrecord_path='datasets/tfrecords/for_infer/from_origin/first_and_second_step/valid.tfrecord',
-        save_path='infer_results/origin/use_version_1/first_and_second_step/raw/valid_results.json'
+        inference_model_dir='saved_models/version_2',
+        tfrecord_path='datasets/tfrecords/for_infer/from_origin/'
+                      'second_step/from_first_step/use_version_2/valid.tfrecord',
+        save_path='infer_results/origin/use_version_2/use_first_step_results/raw/valid_results.json'
     )
 
     # task.train()

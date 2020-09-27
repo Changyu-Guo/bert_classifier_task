@@ -214,7 +214,7 @@ def convert_origin_data_for_infer(origin_data_path, save_path, step='first'):
     writer.close()
 
 
-def convert_last_step_results_for_train(results_path, save_path):
+def convert_last_step_results_for_train(results_path, save_path, step='first'):
     """
         将上一步的推断结果转换为本步骤训练需要的数据
         由于使用的是上一步骤的推断结果，因此存在没有答案的情况
@@ -236,6 +236,9 @@ def convert_last_step_results_for_train(results_path, save_path):
 
     _id = 0
     for paragraph_index, paragraph in enumerate(paragraphs):
+
+        paragraphs[paragraph_index]['qas'] = []
+
         context = paragraph['context']
 
         origin_sros = paragraph['origin_sros']
@@ -264,33 +267,64 @@ def convert_last_step_results_for_train(results_path, save_path):
             # 第二个问题需要将 subject 替换为当前的真实 subject
             question_b = relation_questions.question_b.replace('subject', s)
 
-            # 构建第一个问题的 qas item
-            squad_json_qas_item = get_squad_json_qas_item_template(
-                question=question_a,
-                answers=[{
-                    'text': s,
-                    'answer_start': s_start_pos
-                }],
-                sro_index=index,
-                is_impossible=False,
-                qas_id='id_' + str(_id)
-            )
-            _id += 1
-            paragraphs[paragraph_index]['qas'].append(squad_json_qas_item)
+            if step == 'first':
+                # 构建第一个问题的 qas item
+                squad_json_qas_item = get_squad_json_qas_item_template(
+                    question=question_a,
+                    answers=[{
+                        'text': s,
+                        'answer_start': s_start_pos
+                    }],
+                    sro_index=index,
+                    is_impossible=False,
+                    qas_id='id_' + str(_id)
+                )
+                _id += 1
+                paragraphs[paragraph_index]['qas'].append(squad_json_qas_item)
 
-            # 构建第二个问题的 qas item
-            squad_json_qas_item = get_squad_json_qas_item_template(
-                question=question_b,
-                answers=[{
-                    'text': o,
-                    'answer_start': o_start_pos
-                }],
-                sro_index=index,
-                is_impossible=False,
-                qas_id='id_' + str(_id)
-            )
-            _id += 1
-            paragraphs[paragraph_index]['qas'].append(squad_json_qas_item)
+            elif step == 'second':
+                # 构建第二个问题的 qas item
+                squad_json_qas_item = get_squad_json_qas_item_template(
+                    question=question_b,
+                    answers=[{
+                        'text': o,
+                        'answer_start': o_start_pos
+                    }],
+                    sro_index=index,
+                    is_impossible=False,
+                    qas_id='id_' + str(_id)
+                )
+                _id += 1
+                paragraphs[paragraph_index]['qas'].append(squad_json_qas_item)
+
+            elif step == 'first_and_second':
+                # 构建第一个问题的 qas item
+                squad_json_qas_item = get_squad_json_qas_item_template(
+                    question=question_a,
+                    answers=[{
+                        'text': s,
+                        'answer_start': s_start_pos
+                    }],
+                    sro_index=index,
+                    is_impossible=False,
+                    qas_id='id_' + str(_id)
+                )
+                _id += 1
+                paragraphs[paragraph_index]['qas'].append(squad_json_qas_item)
+
+                # 构建第二个问题的 qas item
+                squad_json_qas_item = get_squad_json_qas_item_template(
+                    question=question_b,
+                    answers=[{
+                        'text': o,
+                        'answer_start': o_start_pos
+                    }],
+                    sro_index=index,
+                    is_impossible=False,
+                    qas_id='id_' + str(_id)
+                )
+                _id += 1
+                paragraphs[paragraph_index]['qas'].append(squad_json_qas_item)
 
         # pred sro 不存在完整的 s / r / o
         # 因此只能构建出负样本
@@ -304,15 +338,16 @@ def convert_last_step_results_for_train(results_path, save_path):
             relation_questions = relation_questions_dict[r]
             question_a = relation_questions.question_a
 
-            squad_json_qas_item = get_squad_json_qas_item_template(
-                question=question_a,
-                answers=[],
-                sro_index=index,
-                is_impossible=True,
-                qas_id='id_' + str(_id)
-            )
-            _id += 1
-            paragraphs[paragraph_index]['qas'].append(squad_json_qas_item)
+            if step == 'first':
+                squad_json_qas_item = get_squad_json_qas_item_template(
+                    question=question_a,
+                    answers=[],
+                    sro_index=index,
+                    is_impossible=True,
+                    qas_id='id_' + str(_id)
+                )
+                _id += 1
+                paragraphs[paragraph_index]['qas'].append(squad_json_qas_item)
 
     results['data'][0]['paragraphs'] = paragraphs
     with tf.io.gfile.GFile(save_path, mode='w') as writer:
@@ -1286,7 +1321,19 @@ def postprocess_results(
         elif step == 'second':
             paragraphs[paragraph_index]['pred_sros'][sro_index]['object'] = final_answer
         elif step == 'first_and_second':
-            pass
+            qas = paragraphs[paragraph_index]['qas']
+            qas_id = example.qas_id
+            for qa in qas:
+                if qas_id == qa['id']:
+                    question_type = qa['question_type']
+                    if question_type == 'a':
+                        paragraphs[paragraph_index]['pred_sros'][sro_index]['subject'] = final_answer
+                    elif question_type == 'b':
+                        paragraphs[paragraph_index]['pred_sros'][sro_index]['object'] = final_answer
+                    else:
+                        raise ValueError('Unknown question type')
+
+                    break
         else:
             raise ValueError('step must be first or second')
 
@@ -1310,129 +1357,10 @@ def postprocess_results(
 
 if __name__ == '__main__':
 
-    # # 将 **上一步骤** 的训练数据集的推断结果转为当前步骤的训练数据
-    # convert_last_step_results_for_train(
-    #     '../multi_turn_mrc_cls_task/infer_results/origin/postprocessed/train_results.json',
-    #     'datasets/raw/for_train/from_last_task/init-train-train-squad-format.json'
-    # )
-    # # 将 **上一步骤** 的验证数据集的推断结果转为当前步骤的验证数据
-    # convert_last_step_results_for_train(
-    #     '../multi_turn_mrc_cls_task/infer_results/origin/postprocessed/valid_results.json',
-    #     'datasets/raw/for_train/from_last_task/init-train-valid-squad-format.json'
-    # )
-
-    # # 将 **上一步骤** 训练数据集的结果转为用于推断的 **原生数据**
-    # convert_last_step_results_for_infer(
-    #     results_path='../multi_turn_mrc_cls_task/infer_results/origin/postprocessed/train_results.json',
-    #     save_path='datasets/raw/for_infer/from_last_task/first_step/init-train-train-squad-format.json',
-    #     step='first'
-    # )
-    #
-    # # 将 **上一步骤** 验证数据集的结果转为用于推断的 **原生数据**
-    # convert_last_step_results_for_infer(
-    #     results_path='../multi_turn_mrc_cls_task/infer_results/origin/postprocessed/valid_results.json',
-    #     save_path='datasets/raw/for_infer/from_last_task/first_step/init-train-valid-squad-format.json',
-    #     step='first'
-    # )
-
-    # 将第一步训练集的结果转为第二步推断的输入数据
-    # convert_last_step_results_for_infer(
-    #     results_path='infer_results/last_task/use_version_2/first_step/postprocessed/valid_results.json',
-    #     save_path='datasets/raw/for_infer/from_last_task/second_step/init-train-valid-squad-format.json',
+    # convert_origin_data_for_train(
+    #     origin_data_path='../common-datasets/init-train-valid-squad-format.json',
+    #     save_path='datasets/raw/for_train/from_origin/second_step/valid.json',
     #     step='second'
-    # )
-
-    # # train / valid data for infer / last task / first step -> tfrecord
-    # generate_tfrecord_from_json_file(
-    #     input_file_path='datasets/raw/for_infer/from_last_task/first_step/init-train-valid-squad-format.json',
-    #     vocab_file_path='../vocabs/bert-base-chinese-vocab.txt',
-    #     tfrecord_save_path='datasets/tfrecords/for_infer/from_last_task/first_step/valid.tfrecord',
-    #     meta_save_path='datasets/tfrecords/for_infer/from_last_task/first_step/valid_meta.json',
-    #     features_save_path='datasets/features/for_infer/from_last_task/first_step/valid_features.pkl',
-    #     max_seq_len=165,
-    #     max_query_len=45,
-    #     doc_stride=128,
-    #     is_train=False,
-    #     version_2_with_negative=True
-    # )
-
-    # train / valid data for infer / last task / second step -> tfrecord
-    # generate_tfrecord_from_json_file(
-    #     input_file_path='datasets/raw/for_infer/from_last_task/second_step/init-train-valid-squad-format.json',
-    #     vocab_file_path='../vocabs/bert-base-chinese-vocab.txt',
-    #     tfrecord_save_path='datasets/tfrecords/for_infer/from_last_task/second_step/valid.tfrecord',
-    #     meta_save_path='datasets/tfrecords/for_infer/from_last_task/second_step/valid_meta.json',
-    #     features_save_path='datasets/features/for_infer/from_last_task/second_step/valid_features.pkl',
-    #     max_seq_len=165,
-    #     max_query_len=45,
-    #     doc_stride=128,
-    #     is_train=False,
-    #     version_2_with_negative=True
-    # )
-
-    # 将上一步骤训练数据的推断结果转为当前步骤的训练数据（含无答案问题）
-    # convert_last_step_results_for_train(
-    #     results_path='../multi_turn_mrc_cls_task/infer_results/origin/postprocessed/train_results.json',
-    #     save_path='datasets/raw/for_train/last_step/init-train-train-squad-format.json'
-    # )
-    # 将上一步骤验证数据的推断结果转为当前步骤的验证数据（含无答案结果）
-    # convert_last_step_results_for_train(
-    #     results_path='../multi_turn_mrc_cls_task/infer_results/origin/postprocessed/valid_results.json',
-    #     save_path='datasets/raw/for_train/last_step/init-train-valid-squad-format.json'
-    # )
-
-    # # 为上一步结果转换的训练数据生成 tfrecord
-    # generate_tfrecord_from_json_file(
-    #     input_file_path='datasets/raw/for_train/from_last_task/init-train-train-squad-format.json',
-    #     vocab_file_path='../vocabs/bert-base-chinese-vocab.txt',
-    #     tfrecord_save_path='datasets/tfrecords/for_train/from_last_task/train.tfrecord',
-    #     meta_save_path='datasets/tfrecords/for_train/from_last_task/train_meta.json',
-    #     features_save_path='datasets/features/for_train/train_features.pkl',
-    #     max_seq_len=165,
-    #     max_query_len=45,
-    #     doc_stride=128,
-    #     is_train=True,
-    #     version_2_with_negative=True
-    # )
-    # # 为上一步结果转换的验证数据生成 tfrecord
-    # generate_tfrecord_from_json_file(
-    #     input_file_path='datasets/raw/for_train/from_last_task/init-train-valid-squad-format.json',
-    #     vocab_file_path='../vocabs/bert-base-chinese-vocab.txt',
-    #     tfrecord_save_path='datasets/tfrecords/for_train/from_last_task/valid.tfrecord',
-    #     meta_save_path='datasets/tfrecords/for_train/from_last_task/valid_meta.json',
-    #     features_save_path='datasets/features/for_train/valid_features.pkl',
-    #     max_seq_len=165,
-    #     max_query_len=45,
-    #     doc_stride=128,
-    #     is_train=True,
-    #     version_2_with_negative=True
-    # )
-
-    # 推断第一步
-    # postprocess_results(
-    #     raw_data_path='datasets/raw/for_infer/from_last_task/first_step/init-train-train-squad-format.json',
-    #     features_path='datasets/features/for_infer/from_last_task/first_step/train_features.pkl',
-    #     results_path='infer_results/last_task/use_version_2/first_step/raw/train_results.json',
-    #     save_dir='infer_results/last_task/use_version_2/first_step/postprocessed',
-    #     prefix='train_',
-    #     n_best_size=20,
-    #     max_answer_length=15,
-    #     do_lower_case=True,
-    #     version_2_with_negative=True,
-    # )
-
-    # # 推断第二步
-    # postprocess_results(
-    #     raw_data_path='datasets/raw/for_infer/from_last_task/second_step/init-train-train-squad-format.json',
-    #     features_path='datasets/features/for_infer/from_last_task/second_step/train_features.pkl',
-    #     results_path='infer_results/last_task/use_version_2/second_step/raw/train_results.json',
-    #     save_dir='infer_results/last_task/use_version_2/second_step/postprocessed',
-    #     prefix='train_',
-    #     n_best_size=20,
-    #     max_answer_length=15,
-    #     do_lower_case=True,
-    #     step='second',
-    #     version_2_with_negative=True
     # )
 
     # convert_origin_data_for_infer(
@@ -1441,18 +1369,24 @@ if __name__ == '__main__':
     #     step='second'
     # )
 
-    convert_origin_data_for_train(
-        origin_data_path='../common-datasets/init-train-valid-squad-format.json',
-        save_path='datasets/raw/for_train/from_origin/second_step/valid.json',
+    convert_last_step_results_for_train(
+        'infer_results/origin/use_version_2/first_step/postprocessed/valid_results.json',
+        'datasets/raw/for_train/from_origin/second_step/from_first_step/use_version_2/valid.json',
         step='second'
     )
 
+    # convert_last_step_results_for_infer(
+    #     results_path='infer_results/origin/use_version_2/first_step/postprocessed/valid_results.json',
+    #     save_path='datasets/raw/for_infer/from_origin/second_step/from_first_step/use_version_2/valid.json',
+    #     step='second'
+    # )
+
     # generate_tfrecord_from_json_file(
-    #     input_file_path='datasets/raw/for_infer/from_origin/second_step/valid.json',
+    #     input_file_path='datasets/raw/for_infer/from_origin/second_step/from_first_step/use_version_2/valid.json',
     #     vocab_file_path='../vocabs/bert-base-chinese-vocab.txt',
-    #     tfrecord_save_path='datasets/tfrecords/for_infer/from_origin/second_step/valid.tfrecord',
-    #     meta_save_path='datasets/tfrecords/for_infer/from_origin/second_step/valid_meta.json',
-    #     features_save_path='datasets/features/for_infer/from_origin/second_step/valid_features.pkl',
+    #     tfrecord_save_path='datasets/tfrecords/for_infer/from_origin/second_step/from_first_step/use_version_2/valid.tfrecord',
+    #     meta_save_path='datasets/tfrecords/for_infer/from_origin/second_step/from_first_step/use_version_2/valid_meta.json',
+    #     features_save_path='datasets/features/for_infer/from_origin/second_step/from_first_step/use_version_2/valid_features.pkl',
     #     max_seq_len=165,
     #     max_query_len=45,
     #     doc_stride=128,
@@ -1460,17 +1394,18 @@ if __name__ == '__main__':
     #     version_2_with_negative=False
     # )
 
+    # 推断第一步
     # postprocess_results(
-    #     raw_data_path='datasets/raw/for_infer/from_origin/second_step/valid.json',
-    #     features_path='datasets/features/for_infer/from_origin/second_step/valid_features.pkl',
-    #     results_path='infer_results/origin/use_version_1/second_step/raw/valid_results.json',
-    #     save_dir='infer_results/origin/use_version_1/second_step/postprocessed',
+    #     raw_data_path='datasets/raw/for_infer/from_origin/second_step/from_first_step/use_version_2/valid.json',
+    #     features_path='datasets/features/for_infer/from_origin/second_step/from_first_step/use_version_2/valid_features.pkl',
+    #     results_path='infer_results/origin/use_version_2/use_first_step_results/raw/valid_results.json',
+    #     save_dir='infer_results/origin/use_version_2/use_first_step_results/postprocessed',
     #     prefix='valid_',
     #     n_best_size=20,
     #     max_answer_length=15,
     #     do_lower_case=True,
     #     step='second',
-    #     version_2_with_negative=False
+    #     version_2_with_negative=False,
     # )
 
     pass
