@@ -1369,11 +1369,11 @@ if __name__ == '__main__':
     #     step='second'
     # )
 
-    convert_last_step_results_for_train(
-        'infer_results/origin/use_version_2/first_step/postprocessed/valid_results.json',
-        'datasets/raw/for_train/from_origin/second_step/from_first_step/use_version_2/valid.json',
-        step='second'
-    )
+    # convert_last_step_results_for_train(
+    #     'infer_results/origin/use_version_2/first_step/postprocessed/valid_results.json',
+    #     'datasets/raw/for_train/from_origin/second_step/from_first_step/use_version_2/valid.json',
+    #     step='second'
+    # )
 
     # convert_last_step_results_for_infer(
     #     results_path='infer_results/origin/use_version_2/first_step/postprocessed/valid_results.json',
@@ -1395,17 +1395,17 @@ if __name__ == '__main__':
     # )
 
     # 推断第一步
-    # postprocess_results(
-    #     raw_data_path='datasets/raw/for_infer/from_origin/second_step/from_first_step/use_version_2/valid.json',
-    #     features_path='datasets/features/for_infer/from_origin/second_step/from_first_step/use_version_2/valid_features.pkl',
-    #     results_path='infer_results/origin/use_version_2/use_first_step_results/raw/valid_results.json',
-    #     save_dir='infer_results/origin/use_version_2/use_first_step_results/postprocessed',
-    #     prefix='valid_',
-    #     n_best_size=20,
-    #     max_answer_length=15,
-    #     do_lower_case=True,
-    #     step='second',
-    #     version_2_with_negative=False,
-    # )
+    postprocess_results(
+        raw_data_path='datasets/raw/for_infer/from_last_task/first_step/valid.json',
+        features_path='datasets/features/for_infer/from_last_task/first_step/valid_features.pkl',
+        results_path='infer_results/last_task/use_version_1/first_step/raw/valid_results.json',
+        save_dir='infer_results/last_task/use_version_1/first_step/postprocessed',
+        prefix='valid_',
+        n_best_size=20,
+        max_answer_length=15,
+        do_lower_case=True,
+        step='first',
+        version_2_with_negative=False,
+    )
 
     pass

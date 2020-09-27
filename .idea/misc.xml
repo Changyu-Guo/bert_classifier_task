@@ -7,6 +7,7 @@
     <file url="file://$PROJECT_DIR$/inference_results/bi_cls_results/version_1/info.txt" />
     <file url="file://$PROJECT_DIR$/inference_results/bi_cls_results/version_2/info.txt" />
     <file url="file://$PROJECT_DIR$/naive_mrc_task/datasets/raw/description.txt" />
+    <file url="file://$PROJECT_DIR$/prf_and_em.txt" />
     <file url="file://$PROJECT_DIR$/vocabs/bert-base-chinese-vocab.txt" />
     <file url="file://$PROJECT_DIR$/vocabs/bert-base-uncased-vocab.txt" />
   </component>

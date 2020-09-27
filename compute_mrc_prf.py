@@ -91,15 +91,6 @@ for paragraph in paragraphs:
     FPS.append(FP)
     FNS.append(FN)
 
-
-# final_precision = sum(precisions) / len(precisions)
-# final_recall = sum(recalls) / len(recalls)
-# final_f1 = sum(f1s) / len(f1s)
-#
-# print(final_precision)
-# print(final_recall)
-# print(final_f1)
-
 avg_TP = sum(TPS) / len(TPS)
 avg_FP = sum(FPS) / len(FPS)
 avg_FN = sum(FNS) / len(FNS)
