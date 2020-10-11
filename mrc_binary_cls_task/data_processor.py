@@ -247,7 +247,7 @@ def read_examples_from_last_step_results(last_step_result_path, is_training):
         context = paragraph['context']
         origin_sros = paragraph['origin_sros']
         pred_sros = paragraph['pred_sros']
-        origin_three_tuples = []
+        origin_relations = []
 
         # 训练包含正样本和负样本
         if is_training:
@@ -257,7 +257,7 @@ def read_examples_from_last_step_results(last_step_result_path, is_training):
                 r = sro['relation']
                 s = sro['subject']
                 o = sro['object']
-                origin_three_tuples.append(s + r + o)
+                origin_relations.append(r)
 
                 relation_questions = relation_questions_dict[r]
                 question_c = relation_questions.question_c
@@ -274,16 +274,13 @@ def read_examples_from_last_step_results(last_step_result_path, is_training):
 
             # 构造负样本
             for sro_index, sro in enumerate(pred_sros):
-                if not sro.get('object', False):
-                    continue
 
                 s = sro['subject']
                 r = sro['relation']
                 o = sro['object']
 
-                three_tuple = s + r + o
                 # 如果当前样本预测正确，则不构造当前样本为负样本
-                if three_tuple in origin_three_tuples:
+                if r in origin_relations:
                     continue
 
                 relation_questions = relation_questions_dict[r]

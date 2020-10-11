@@ -1,6 +1,7 @@
 # -*- coding: utf - 8 -*-
 
 import tensorflow as tf
+from absl import logging
 from transformers import BertConfig, TFBertModel
 
 
@@ -14,6 +15,11 @@ def create_model(is_train=True, use_pretrain=False):
     else:
         bert_config = BertConfig.from_json_file('../configs/bert-base-chinese-config.json')
         bert_model = TFBertModel(bert_config)
+        checkpoint = tf.train.Checkpoint(model=bert_model)
+        latest_checkpoint = tf.train.latest_checkpoint('../bert-base-chinese')
+        if latest_checkpoint:
+            checkpoint.restore(latest_checkpoint)
+            logging.info('Load checkpoint {} from {}'.format(latest_checkpoint, 'bert-base-chinese'))
     bert_output = bert_model({
         'input_ids': inputs_ids,
         'attention_mask': inputs_mask,
