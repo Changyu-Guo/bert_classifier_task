@@ -15,3 +15,5 @@ naive_mrc_task/inference_results/version_1/last_version_1/first_step/raw
 naive_mrc_task/inference_results/version_2/last_version_1/second_step/raw
 
 naive_mrc_task/inference_results/version_1/last_version_1/second_step/raw
+
+bert-base-chinese
