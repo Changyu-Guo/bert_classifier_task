@@ -101,7 +101,7 @@ def get_distribution_strategy(
                 'OneDeviceStrategy can not be used for more than '
                 'one device'
             )
-        return tf.distribute.OneDeviceStrategy(device='/gpu:0')
+        return tf.distribute.OneDeviceStrategy(device='/gpu:1')
 
     # 异步训练
     if distribution_strategy == 'parameter_server':

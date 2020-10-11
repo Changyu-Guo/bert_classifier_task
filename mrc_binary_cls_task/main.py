@@ -260,12 +260,12 @@ class BiCLSTask:
 # task
 TASK_NAME = 'mrc_binary_cls_task'
 
-TRAIN_TFRECORD_FILE_PATH = 'datasets/from_last_version_2/tfrecords/for_train/train.tfrecord'
-VALID_TFRECORD_FILE_PATH = 'datasets/from_last_version_2/tfrecords/for_train/train.tfrecord'
+TRAIN_TFRECORD_FILE_PATH = 'datasets/version_1/train/tfrecords/train.tfrecord'
+VALID_TFRECORD_FILE_PATH = 'datasets/version_1/train/tfrecords/valid.tfrecord'
 
 # tfrecord meta data
-TRAIN_TFRECORD_META_PATH = 'datasets/from_last_version_2/tfrecords/for_train/train_meta.json'
-VALID_TFRECORD_META_PATH = 'datasets/from_last_version_2/tfrecords/for_train/valid_meta.json'
+TRAIN_TFRECORD_META_PATH = 'datasets/version_1/train/meta/train_meta.json'
+VALID_TFRECORD_META_PATH = 'datasets/version_1/train/meta/valid_meta.json'
 
 # save relate
 MODEL_SAVE_DIR = 'saved_models/mrc_binary_cls_model'
@@ -300,7 +300,7 @@ def get_model_params():
         end_lr=0.0,
         warmup_steps_ratio=0.1,
         enable_checkpointing=False,  # Notice 开启此选项可能会存储大量的 Checkpoint ####
-        enable_tensorboard=True,
+        enable_tensorboard=False,
         enable_early_stopping=True,
         tensorboard_log_dir=TENSORBOARD_LOG_DIR,
         predict_threshold=PREDICT_THRESHOLD
@@ -324,8 +324,10 @@ def main():
 if __name__ == '__main__':
     task = main()
 
-    task.predict_tfrecord(
-        inference_model_dir='saved_models/version_1',
-        tfrecord_path='datasets/from_last_version_1/tfrecords/for_infer/valid.tfrecord',
-        save_path='infer_results/version_1/raw/valid_results.json'
-    )
+    task.train()
+
+    # task.predict_tfrecord(
+    #     inference_model_dir='saved_models/version_1',
+    #     tfrecord_path='datasets/from_last_version_1/tfrecords/for_infer/valid.tfrecord',
+    #     save_path='infer_results/version_1/raw/valid_results.json'
+    # )

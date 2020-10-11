@@ -1,4 +1,4 @@
-/inference_results
+inference_results
 
 logs
 
@@ -8,10 +8,10 @@ saved_models
 
 train_all_nbest.json
 
-naive_mrc_task/infer_results/last_task/use_version_2/first_step/raw
+naive_mrc_task/inference_results/version_2/last_version_1/first_step/raw
 
-naive_mrc_task/infer_results/last_task/use_version_1/first_step/raw
+naive_mrc_task/inference_results/version_1/last_version_1/first_step/raw
 
-naive_mrc_task/infer_results/last_task/use_version_2/second_step/raw
+naive_mrc_task/inference_results/version_2/last_version_1/second_step/raw
 
-naive_mrc_task/infer_results/last_task/use_version_1/second_step/raw
+naive_mrc_task/inference_results/version_1/last_version_1/second_step/raw

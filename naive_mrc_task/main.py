@@ -274,12 +274,12 @@ class MRCTask:
 TASK_NAME = 'mrc'
 
 # TFRecord
-TRAIN_TFRECORD_FILE_PATH = 'datasets/tfrecords/for_train/last_task/train.tfrecord'
-VALID_TFRECORD_FILE_PATH = 'datasets/tfrecords/for_train/last_task/valid.tfrecord'
+TRAIN_TFRECORD_FILE_PATH = 'datasets/tfrecords/train/last_task/train.tfrecord'
+VALID_TFRECORD_FILE_PATH = 'datasets/tfrecords/train/last_task/valid.tfrecord'
 
 # tfrecord meta data
-TRAIN_TFRECORD_META_PATH = 'datasets/tfrecords/for_train/last_task/train_meta.json'
-VALID_TFRECORD_META_PATH = 'datasets/tfrecords/for_train/last_task/valid_meta.json'
+TRAIN_TFRECORD_META_PATH = 'datasets/tfrecords/train/last_task/train_meta.json'
+VALID_TFRECORD_META_PATH = 'datasets/tfrecords/train/last_task/valid_meta.json'
 
 MODEL_SAVE_DIR = 'saved_models'
 TENSORBOARD_LOG_DIR = 'logs'
@@ -338,30 +338,29 @@ if __name__ == '__main__':
     # 推断上一步骤的验证集结果
     # task.predict_tfrecord(
     #     tfrecord_path='datasets/tfrecords/origin/first_step/valid.tfrecord',
-    #     save_path='infer_results/origin/raw/first_step/valid_results.json'
+    #     save_path='inference_results/origin/raw/first_step/valid_results.json'
     # )
 
     # task.predict_tfrecord(
-    #     tfrecord_path='datasets/tfrecords/for_train/from_last_task/train.tfrecord',
-    #     save_path='infer_results/for_train/raw/first_step/from_last_task/train_result.json'
+    #     tfrecord_path='datasets/tfrecords/train/last_version_1/train.tfrecord',
+    #     save_path='inference_results/train/raw/first_step/last_version_1/train_result.json'
     # )
 
     # task.predict_tfrecord(
     #     inference_model_dir='saved_models/version_2',
-    #     tfrecord_path='datasets/tfrecords/for_infer/from_last_task/first_step/valid.tfrecord',
-    #     save_path='infer_results/last_task/use_version_2/first_step/raw/valid_results.json'
+    #     tfrecord_path='datasets/tfrecords/inference/last_version_1/first_step/valid.tfrecord',
+    #     save_path='inference_results/last_task/use_version_2/first_step/raw/valid_results.json'
     # )
     # task.predict_tfrecord(
     #     inference_model_dir='saved_models/version_2',
-    #     tfrecord_path='datasets/tfrecords/for_infer/from_last_task/second_step/train.tfrecord',
-    #     save_path='infer_results/last_task/use_version_2/second_step/raw/train_results.json'
+    #     tfrecord_path='datasets/tfrecords/inference/last_version_1/second_step/train.tfrecord',
+    #     save_path='inference_results/last_task/use_version_2/second_step/raw/train_results.json'
     # )
 
-    # 使用 version 1 对 valid 进行推断
     task.predict_tfrecord(
         inference_model_dir='saved_models/version_1',
-        tfrecord_path='datasets/tfrecords/for_infer/from_last_task/second_step/from_version_1/valid.tfrecord',
-        save_path='infer_results/last_task/use_version_1/second_step/raw/valid_results.json'
+        tfrecord_path='datasets/version_1/inference/last_version_1/second_step/tfrecords/valid.tfrecord',
+        save_path='inference_results/version_1/last_version_1/second_step/raw/valid_results.json'
     )
 
     # task.train()

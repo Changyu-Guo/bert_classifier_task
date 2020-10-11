@@ -312,12 +312,12 @@ if __name__ == '__main__':
 
     # 推断 valid
     task.predict_tfrecord(
-        tfrecord_path='datasets/tfrecords/for_infer/valid.tfrecord',
-        save_path='infer_results/origin/raw/valid_results.json'
+        tfrecord_path='datasets/version_1/tfrecords/inference/valid.tfrecord',
+        save_path='inference_results/version_1/raw/valid_results.json'
     )
 
     # 推断 train
     task.predict_tfrecord(
-        tfrecord_path='datasets/tfrecords/for_infer/train.tfrecord',
-        save_path='infer_results/origin/train_results.json'
+        tfrecord_path='datasets/version_1/tfrecords/inference/train.tfrecord',
+        save_path='inference_results/origin/train_results.json'
     )

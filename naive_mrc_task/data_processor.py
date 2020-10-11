@@ -246,7 +246,7 @@ def convert_last_step_results_for_train(results_path, save_path, step='first'):
 
         pred_sros = paragraph['pred_sros']
 
-        # from_origin sro 存在完整的 s / r / o
+        # origin sro 存在完整的 s / r / o
         # 因此可以构建出两个问答
         for index, sro in enumerate(origin_sros):
             s = sro['subject']
@@ -392,14 +392,14 @@ def convert_last_step_results_for_infer(results_path, save_path, step='first'):
     qas_id = 0
     for paragraph_index, paragraph in enumerate(paragraphs):
 
-        # 在构建之前将 qas 列表重置
         paragraphs[paragraph_index]['qas'] = []
+
         # 在 first step 中使用 relation 推断 subject
         # 在 second step 中使用 relation 和 subject 推断 object
         pred_sros = paragraph['pred_sros']
 
         for sro_index, sro in enumerate(pred_sros):
-            # relation 是一定存在的一个键
+
             relation_questions = relation_questions_dict[sro['relation']]
 
             # 第一步推断使用第一个问题
@@ -408,8 +408,6 @@ def convert_last_step_results_for_infer(results_path, save_path, step='first'):
 
             # 第二步推断使用第二个问题
             if step == 'second':
-                if sro['subject'] == '':
-                    continue
                 question = relation_questions.question_b.replace('subject', sro['subject'])
 
             squad_json_qas_item = {
@@ -1359,47 +1357,47 @@ if __name__ == '__main__':
 
     # convert_origin_data_for_train(
     #     origin_data_path='../common-datasets/init-train-valid-squad-format.json',
-    #     save_path='datasets/raw/for_train/from_origin/second_step/valid.json',
+    #     save_path='datasets/raw/train/origin/second_step/valid.json',
     #     step='second'
     # )
 
     # convert_origin_data_for_infer(
     #     origin_data_path='../common-datasets/init-train-valid-squad-format.json',
-    #     save_path='datasets/raw/for_infer/from_origin/second_step/valid.json',
+    #     save_path='datasets/raw/inference/origin/second_step/valid.json',
     #     step='second'
     # )
 
     # convert_last_step_results_for_train(
-    #     'infer_results/origin/use_version_2/first_step/postprocessed/valid_results.json',
-    #     'datasets/raw/for_train/from_origin/second_step/from_first_step/use_version_2/valid.json',
+    #     'inference_results/origin/use_version_2/first_step/postprocessed/valid_results.json',
+    #     'datasets/raw/train/origin/second_step/from_first_step/use_version_2/valid.json',
     #     step='second'
     # )
 
     # convert_last_step_results_for_infer(
-    #     results_path='infer_results/last_task/use_version_1/first_step/postprocessed/valid_results.json',
-    #     save_path='datasets/raw/for_infer/from_last_task/second_step/from_version_1/valid.json',
+    #     results_path='inference_results/last_task/use_version_1/first_step/postprocessed/valid_results.json',
+    #     save_path='datasets/raw/inference/last_version_1/second_step/from_version_1/valid.json',
     #     step='second'
     # )
 
     # generate_tfrecord_from_json_file(
-    #     input_file_path='datasets/raw/for_infer/from_last_task/second_step/from_version_1/valid.json',
+    #     input_file_path='datasets/version_1/inference/last_version_1/second_step/valid_results.json',
     #     vocab_file_path='../vocabs/bert-base-chinese-vocab.txt',
-    #     tfrecord_save_path='datasets/tfrecords/for_infer/from_last_task/second_step/from_version_1/valid.tfrecord',
-    #     meta_save_path='datasets/tfrecords/for_infer/from_last_task/second_step/from_version_1/valid_meta.json',
-    #     features_save_path='datasets/features/for_infer/from_last_task/second_step/from_version_1/valid_features.pkl',
+    #     tfrecord_save_path='datasets/version_1/inference/last_version_1/second_step/tfrecords/valid.tfrecord',
+    #     meta_save_path='datasets/version_1/inference/last_version_1/second_step/meta/valid_meta.json',
+    #     features_save_path='datasets/version_1/inference/last_version_1/second_step/features/valid_features.pkl',
     #     max_seq_len=165,
     #     max_query_len=45,
-    #     doc_stride=128,
+    #     doc_stride=165,
     #     is_train=False,
     #     version_2_with_negative=False
     # )
 
     # 推断第一步
     postprocess_results(
-        raw_data_path='datasets/raw/for_infer/from_last_task/second_step/from_version_1/valid.json',
-        features_path='datasets/features/for_infer/from_last_task/second_step/from_version_1/valid_features.pkl',
-        results_path='infer_results/last_task/use_version_1/second_step/raw/valid_results.json',
-        save_dir='infer_results/last_task/use_version_1/second_step/postprocessed',
+        raw_data_path='datasets/version_1/inference/last_version_1/second_step/valid_results.json',
+        features_path='datasets/version_1/inference/last_version_1/second_step/features/valid_features.pkl',
+        results_path='inference_results/version_1/last_version_1/second_step/raw/valid_results.json',
+        save_dir='inference_results/version_1/last_version_1/second_step/postprocessed',
         prefix='valid_',
         n_best_size=20,
         max_answer_length=5,

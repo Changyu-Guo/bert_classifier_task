@@ -450,32 +450,32 @@ def postprocess_results(
 
 if __name__ == '__main__':
     generate_tfrecord_from_json_file(
-        input_file_path='datasets/from_last_version_2/raw/for_valid/valid.json',
+        input_file_path='datasets/version_1/train/valid_results_old.json',
         vocab_file_path='../vocabs/bert-base-chinese-vocab.txt',
-        tfrecord_save_path='datasets/from_last_version_2/tfrecords/for_valid/valid.tfrecord',
-        meta_save_path='datasets/from_last_version_2/tfrecords/for_valid/valid_meta.json',
-        features_save_path='datasets/from_last_version_2/features/for_valid/valid_features.pkl',
+        tfrecord_save_path='datasets/version_1/train/tfrecords/valid.tfrecord',
+        meta_save_path='datasets/version_1/train/meta/valid_meta.json',
+        features_save_path='datasets/version_1/train/features/valid_features.pkl',
         max_seq_len=165,
-        is_train=False
+        is_train=True
     )
 
     # convert_last_step_results_for_infer(
-    #     results_path='../naive_mrc_task/infer_results/last_task/use_version_1/second_step/postprocessed/valid_results'
+    #     results_path='../naive_mrc_task/inference_results/last_task/use_version_1/second_step/postprocessed/valid_results'
     #                  '.json',
     #     save_path='datasets/from_last_version_1/raw/valid.json'
     # )
 
     # convert_last_step_results_for_valid(
-    #     results_path='../naive_mrc_task/infer_results/last_task/use_version_2/second_step/postprocessed/'
+    #     results_path='../naive_mrc_task/inference_results/last_task/use_version_2/second_step/postprocessed/'
     #                  'valid_results.json',
     #     save_path='datasets/from_last_version_2/raw/for_valid/valid.json'
     # )
 
     # postprocess_results(
-    #     raw_data_path='datasets/from_last_version_1/raw/for_infer/valid.json',
-    #     features_path='datasets/from_last_version_1/features/for_infer/valid_features.pkl',
-    #     results_path='infer_results/version_1/raw/valid_results.json',
-    #     save_path='infer_results/version_1/postprocessed/valid_results.json'
+    #     raw_data_path='datasets/from_last_version_1/raw/inference/valid.json',
+    #     features_path='datasets/from_last_version_1/features/inference/valid_features.pkl',
+    #     results_path='inference_results/last_version_1/raw/valid_results.json',
+    #     save_path='inference_results/last_version_1/postprocessed/valid_results.json'
     # )
 
     pass

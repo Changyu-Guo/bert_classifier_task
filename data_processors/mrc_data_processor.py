@@ -32,7 +32,7 @@ bi_cls_s1_valid_results_path = 'inference_results/bi_cls_s1_results/valid_result
 train_data_before_first_step_save_path = 'common-datasets/preprocessed_datasets/first_step_train.json'
 valid_data_before_first_step_save_path = 'common-datasets/preprocessed_datasets/first_step_valid.json'
 
-# first step inference infer_results
+# first step inference inference_results
 first_step_inference_train_save_path = 'inference_results/mrc_results/in_use/first_step/train_results.json'
 first_step_inference_valid_save_path = 'inference_results/mrc_results/in_use/first_step/valid_results.json'
 
@@ -40,7 +40,7 @@ first_step_inference_valid_save_path = 'inference_results/mrc_results/in_use/fir
 second_step_train_save_path = 'common-datasets/preprocessed_datasets/second_step_train.json'
 second_step_valid_save_path = 'common-datasets/preprocessed_datasets/second_step_valid.json'
 
-# second step inference infer_results
+# second step inference inference_results
 second_step_inference_train_save_path = 'inference_results/mrc_results/in_use/second_step/train_results.json'
 second_step_inference_valid_save_path = 'inference_results/mrc_results/in_use/second_step/valid_results.json'
 
