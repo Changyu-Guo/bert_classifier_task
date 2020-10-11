@@ -263,12 +263,12 @@ class BiCLSTask:
 # task
 TASK_NAME = 'mrc_binary_cls_task'
 
-TRAIN_TFRECORD_FILE_PATH = 'datasets/version_2/train/tfrecords/train.tfrecord'
-VALID_TFRECORD_FILE_PATH = 'datasets/version_2/train/tfrecords/valid.tfrecord'
+TRAIN_TFRECORD_FILE_PATH = 'datasets/version_1/train/tfrecords/train.tfrecord'
+VALID_TFRECORD_FILE_PATH = 'datasets/version_1/train/tfrecords/valid.tfrecord'
 
 # tfrecord meta data
-TRAIN_TFRECORD_META_PATH = 'datasets/version_2/train/meta/train_meta.json'
-VALID_TFRECORD_META_PATH = 'datasets/version_2/train/meta/valid_meta.json'
+TRAIN_TFRECORD_META_PATH = 'datasets/version_1/train/meta/train_meta.json'
+VALID_TFRECORD_META_PATH = 'datasets/version_1/train/meta/valid_meta.json'
 
 # save relate
 MODEL_SAVE_DIR = 'saved_models/mrc_binary_cls_model'
@@ -283,7 +283,7 @@ PREDICT_BATCH_SIZE = 500
 PREDICT_THRESHOLD = 0.5
 
 # train relate
-LEARNING_RATE = 1e-4
+LEARNING_RATE = 3e-5
 
 
 def get_model_params():
@@ -318,8 +318,8 @@ def main():
     logging.set_verbosity(logging.INFO)
     task = BiCLSTask(
         get_model_params(),
-        use_pretrain=False,
-        batch_size=24,
+        use_pretrain=True,
+        batch_size=48,
     )
     return task
 
