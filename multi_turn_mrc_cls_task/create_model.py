@@ -5,16 +5,20 @@ from tensorflow import keras
 from transformers import TFBertModel, BertConfig
 
 
-def create_model(is_train=True):
+def create_model(use_net_pretrain, is_train=True):
     inputs_ids = keras.Input((None,), name='inputs_ids', dtype=tf.int64)
     inputs_mask = keras.Input((None,), name='inputs_mask', dtype=tf.int64)
     segment_ids = keras.Input((None,), name='segment_ids', dtype=tf.int64)
 
     # load bert core
-    bert_config = BertConfig.from_json_file('../bert-base-chinese/bert_config.json')
-    core_bert = TFBertModel(bert_config)
-    checkpoint = tf.train.Checkpoint(model=core_bert)
-    checkpoint.restore(tf.train.latest_checkpoint('../bert-base-chinese')).assert_consumed()
+
+    if use_net_pretrain:
+        core_bert = TFBertModel.from_pretrained('bert-base-chinese')
+    else:
+        bert_config = BertConfig.from_json_file('../bert-base-chinese/bert_config.json')
+        core_bert = TFBertModel(bert_config)
+        checkpoint = tf.train.Checkpoint(model=core_bert)
+        checkpoint.restore(tf.train.latest_checkpoint('../bert-base-chinese')).assert_consumed()
 
     bert_output = core_bert(
         inputs={

@@ -1,9 +1,6 @@
 # -*- coding: utf - 8 -*-
 
 import os
-
-os.environ['CUDA_VISIBLE_DEVICES'] = '1'
-
 import json
 
 import tensorflow as tf
@@ -27,8 +24,14 @@ class MultiTurnMRCCLSTask:
             self,
             kwargs,
             batch_size=None,
+            use_net_pretrain=False,
             inference_model_dir=None
     ):
+
+        self.use_net_pretrain = use_net_pretrain
+
+        if self.use_net_pretrain:
+            os.environ['CUDA_VISIBLE_DEVICES'] = '1'
 
         self.batch_size = batch_size
         self.inference_model_dir = inference_model_dir
@@ -111,7 +114,7 @@ class MultiTurnMRCCLSTask:
         #   3. load checkpoint
         #   4. compile
         with get_strategy_scope(self.distribution_strategy):
-            model = create_model(is_train=True)
+            model = create_model(use_net_pretrain=self.use_net_pretrain, is_train=True)
             optimizer = self._create_optimizer()
 
             # load checkpoint
@@ -289,7 +292,8 @@ def main():
     logging.set_verbosity(logging.INFO)
     task = MultiTurnMRCCLSTask(
         get_model_params(),
-        batch_size=24
+        batch_size=48,
+        use_net_pretrain=True
     )
     return task
 
