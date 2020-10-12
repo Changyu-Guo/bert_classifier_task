@@ -3,9 +3,7 @@
 import json
 from collections import Counter
 
-INFERENCE_RESULT_PATH = 'infer_results/version_2/postprocessed/valid_results.json'
-# INFERENCE_RESULT_PATH = '../naive_mrc_task/inference_results/last_task/use_version_2/' \
-#                         'second_step/postprocessed/valid_results.json'
+INFERENCE_RESULT_PATH = '../inference_results/bi_cls_results/version_2/valid_results.json'
 
 with open(INFERENCE_RESULT_PATH, mode='r', encoding='utf-8') as reader:
     results = json.load(reader)

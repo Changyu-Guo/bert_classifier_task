@@ -15,8 +15,8 @@ from sklearn.metrics import precision_recall_fscore_support
 INIT_TRAIN_TRAIN_PATH = '../common-datasets/init-train-train.json'
 INIT_TRAIN_VALID_PATH = '../common-datasets/init-train-valid.json'
 
-INIT_TRAIN_TRAIN_SQUAD_SAVE_PATH = 'datasets/raw/train.json'
-INIT_TRAIN_VALID_SQUAD_SAVE_PATH = 'datasets/raw/valid.json'
+INIT_TRAIN_TRAIN_SQUAD_SAVE_PATH = 'datasets/version_2/train/train.json'
+INIT_TRAIN_VALID_SQUAD_SAVE_PATH = 'datasets/version_2/train/valid.json'
 
 
 def convert_init_train_to_squad_format(init_train_path, save_path):
@@ -125,7 +125,7 @@ def select_random_items(all_items, select_num):
             return list(selected_items)
 
 
-def read_examples_for_train(filepath):
+def read_examples_with_random(filepath):
     """
         从 init train 中读取数据，将其转换为当前任务所需的数据形式
     """
@@ -144,6 +144,10 @@ def read_examples_for_train(filepath):
     for index, item in enumerate(all_relations):
         relation_to_index_map[item] = index
 
+    subjects_to_relations_map = collections.defaultdict(list)
+    for subject, relation in zip(all_subjects, all_relations):
+        subjects_to_relations_map[subject].append(relation)
+
     # 所有的 subject 类型，理论上应该是 4 个
     subjects_type = set(all_subjects)
 
@@ -152,7 +156,7 @@ def read_examples_for_train(filepath):
     question_template = '这句话包含了subject的relation信息'
 
     # 对每一条 example 处理
-    for index, paragraph in enumerate(input_data[0]['paragraphs']):
+    for paragraph_index, paragraph in enumerate(input_data[0]['paragraphs']):
         text = paragraph['context']
 
         sros = paragraph['origin_sros']
@@ -161,7 +165,7 @@ def read_examples_for_train(filepath):
         current_relation_indices = [relation_to_index_map[relation] for relation in current_relations]
 
         # 当前 example 中所有出现的 subject
-        current_subjects = set(all_subjects[index] for index in current_relation_indices)
+        current_subjects = set(all_subjects[relation_index] for relation_index in current_relation_indices)
 
         rest_subjects = subjects_type - current_subjects
         rest_subjects = list(rest_subjects)
@@ -181,22 +185,26 @@ def read_examples_for_train(filepath):
 
             # 每个 subject 和其对应的 relation 都有一个正样本
             example = Example(
-                paragraph_index=index,
+                paragraph_index=paragraph_index,
                 text=text,
                 question=question,
                 is_valid=1
             )
             examples.append(example)
 
-            # 每个已出现过的 subject 都和若干个随机的未出现过的 relation 构成一个负样本
+            # 每个已出现过的 subject 都和若干个随机的未出现过的 当前 subject 对应的 relation 构成一个负样本
+            # 这里使用当前 subject 对应的所有 relations 和 未出现过的所有 relations 取交集
+            # 就能得到当前 subject 对应的所有未出现过的 relations
+            rest_subject_relations = set(subjects_to_relations_map[s_type]) & set(rest_relations)
+            rest_subject_relations = list(rest_subject_relations)
             random_relations = select_random_items(
-                all_items=rest_relations,
-                select_num=random.randint(2, 5)
+                all_items=rest_subject_relations,
+                select_num=random.randint(3, min(10, len(rest_subject_relations)))
             )
             for random_relation in random_relations:
                 question = question_template.replace('subject', s_type).replace('relation', random_relation)
                 example = Example(
-                    paragraph_index=index,
+                    paragraph_index=paragraph_index,
                     text=text,
                     question=question,
                     is_valid=0
@@ -209,27 +217,28 @@ def read_examples_for_train(filepath):
             for random_subject in random_subjects:
 
                 # 若干个未出现过的 relation
+                rest_subject_relations = set(subjects_to_relations_map[random_subject]) & set(rest_relations)
+                rest_subject_relations = list(rest_subject_relations)
                 random_relations = select_random_items(
-                    all_items=rest_relations,
-                    select_num=random.randint(2, 5)
+                    all_items=rest_subject_relations,
+                    select_num=random.randint(3, min(10, len(rest_subject_relations)))
                 )
                 for random_relation in random_relations:
                     question = question_template.replace('subject', random_subject)
                     question = question.replace('relation', random_relation)
                     example = Example(
-                        paragraph_index=index,
+                        paragraph_index=paragraph_index,
                         text=text,
                         question=question,
                         is_valid=0
                     )
                     examples.append(example)
-
     print(len(examples))
 
     return examples
 
 
-def read_examples_for_valid(filepath):
+def read_examples_without_random(filepath):
     # 读取 init train 中的数据并转为 json 对象
     with tf.io.gfile.GFile(filepath, mode='r') as reader:
         input_data = json.load(reader)['data']
@@ -250,7 +259,7 @@ def read_examples_for_valid(filepath):
     question_template = '这句话包含了subject的relation信息'
 
     # 对每一条 example 处理
-    for index, paragraph in enumerate(input_data[0]['paragraphs']):
+    for paragraph_index, paragraph in enumerate(input_data[0]['paragraphs']):
 
         text = paragraph['context']
 
@@ -263,7 +272,7 @@ def read_examples_for_valid(filepath):
             # 当前样本拥有的 relation，应预测为 1
             if relation in current_relations:
                 example = Example(
-                    paragraph_index=index,
+                    paragraph_index=paragraph_index,
                     text=text,
                     question=question,
                     is_valid=1
@@ -271,14 +280,12 @@ def read_examples_for_valid(filepath):
             else:
                 # 当前样本没有的 relation，应预测为 0
                 example = Example(
-                    paragraph_index=index,
+                    paragraph_index=paragraph_index,
                     text=text,
                     question=question,
                     is_valid=0
                 )
             examples.append(example)
-
-    print(len(examples))
 
     return examples
 
@@ -319,16 +326,21 @@ def convert_examples_to_features(
             print(example_index + 1)
 
 
-def generate_tfrecord_from_json_file(input_file_path, vocab_file_path,
-                                     output_save_path, meta_save_path,
-                                     features_save_path, max_seq_len,
-                                     is_train):
-    if is_train:
-        examples = read_examples_for_train(
+def generate_tfrecord_from_json_file(
+        input_file_path,
+        vocab_file_path,
+        output_save_path,
+        meta_save_path,
+        features_save_path,
+        max_seq_len,
+        random
+):
+    if random:
+        examples = read_examples_with_random(
             filepath=input_file_path
         )
     else:
-        examples = read_examples_for_valid(
+        examples = read_examples_without_random(
             filepath=input_file_path
         )
 
@@ -365,9 +377,9 @@ def generate_tfrecord_from_json_file(input_file_path, vocab_file_path,
 
 def postprocess_results(
         raw_data_path,
-        features_path,
         results_path,
-        save_path
+        save_path,
+        threshold=0.5
 ):
     _, relations, _, _ = extract_relations_from_init_train_table('../common-datasets/init-train-table.txt')
 
@@ -375,10 +387,6 @@ def postprocess_results(
         raw_data = json.load(reader)
     reader.close()
     paragraphs = raw_data['data'][0]['paragraphs']
-
-    with gzip.open(features_path, mode='rb') as reader:
-        features = pickle.load(reader)
-    reader.close()
 
     with tf.io.gfile.GFile(results_path, mode='r') as reader:
         results = json.load(reader)
@@ -394,7 +402,7 @@ def postprocess_results(
             result_index = result_pos + i
             result = results[result_index]
             prob = result['prob']
-            if prob >= 0.5:
+            if prob >= threshold:
                 paragraphs[index]['pred_sros'].append({
                     'relation': relations[i]
                 })
@@ -405,78 +413,75 @@ def postprocess_results(
     writer.close()
 
 
-def compute_prf(features_path, results_path):
-    with gzip.open(features_path, mode='rb') as reader:
-        features = pickle.load(reader)
-    reader.close()
-
-    with tf.io.gfile.GFile(results_path, mode='r') as reader:
+def compute_prf(post_results_path):
+    with tf.io.gfile.GFile(post_results_path, mode='r') as reader:
         results = json.load(reader)
     reader.close()
 
-    origin_is_valid = []
-    pred_is_valid = []
-    for feature, result in zip(features, results):
-        origin_is_valid.append(feature.is_valid)
-        if result['prob'] >= 0.5:
-            pred_is_valid.append(1)
-        else:
-            pred_is_valid.append(0)
+    paragraphs = results['data'][0]['paragraphs']
 
-    precision, recall, f_score, _ = precision_recall_fscore_support(
-        y_true=origin_is_valid,
-        y_pred=pred_is_valid,
-        average='binary'
-    )
+    TPS = []
+    FPS = []
+    FNS = []
+
+    for paragraph in paragraphs:
+        origin_sros = paragraph['origin_sros']
+        pred_sros = paragraph['pred_sros']
+
+        # 取出所有的 relations
+        origin_relations = [origin_sro['relation'] for origin_sro in origin_sros]
+        pred_relations = [pred_sro['relation'] for pred_sro in pred_sros]
+        all_relations_set = set(origin_relations + pred_relations)
+
+        TP = 0
+        FP = 0
+        FN = 0
+
+        for relation in all_relations_set:
+
+            # 真阳性
+            if relation in origin_relations and relation in pred_relations:
+                TP += 1
+
+            # 假阴性
+            if relation in origin_relations and relation not in pred_relations:
+                FN += 1
+
+            # 假阳性
+            if relation not in origin_relations and relation in pred_relations:
+                FP += 1
+
+        TPS.append(TP)
+        FPS.append(FP)
+        FNS.append(FN)
+
+    avg_TP = sum(TPS) / len(TPS)
+    avg_FP = sum(FPS) / len(FPS)
+    avg_FN = sum(FNS) / len(FNS)
+
+    precision = avg_TP / (avg_TP + avg_FP)
+    recall = avg_TP / (avg_TP + avg_FN)
+    f1 = 2 * precision * recall / (precision + recall)
 
     print('precision: ', precision)
     print('recall: ', recall)
-    print('f1-score: ', f_score)
+    print('f1-score: ', f1)
 
 
 if __name__ == '__main__':
-    # generate train tfrecord for train
-    # generate_tfrecord_from_json_file(
-    #     input_file_path='datasets/raw/init-train-train-squad-format.json',
-    #     vocab_file_path='../vocabs/bert-base-chinese-vocab.txt',
-    #     output_save_path='datasets/tfrecords/train/train.tfrecord',
-    #     meta_save_path='datasets/tfrecords/train/train_meta.json',
-    #     features_save_path='datasets/features/train/train_features.pkl',
-    #     max_seq_len=165,
-    #     is_train=True  # 含有随机的样本, 用于训练
-    # )
-
-    # generate train tfrecord for infer
-    # generate_tfrecord_from_json_file(
-    #     input_file_path='datasets/raw/init-train-train-squad-format.json',
-    #     vocab_file_path='../vocabs/bert-base-chinese-vocab.txt',
-    #     output_save_path='datasets/tfrecords/origin/train.tfrecord',
-    #     meta_save_path='datasets/tfrecords/origin/train_meta.json',
-    #     features_save_path='datasets/features/origin/train_features.pkl',
-    #     max_seq_len=165,
-    #     is_train=False  # infer 的过程中不需要使用随机的样本, 就对固定的 53 个问题进行推断
-    # )
-
-    # generate valid tfrecord for train and infer
-    # (valid data 无论是 train 还是 infer 都是一样的)
-    # generate_tfrecord_from_json_file(
-    #     input_file_path='datasets/raw/init-train-valid-squad-format.json',
-    #     vocab_file_path='../vocabs/bert-base-chinese-vocab.txt',
-    #     output_save_path='datasets/tfrecords/train/valid.tfrecord',
-    #     meta_save_path='datasets/tfrecords/train/valid_meta.json',
-    #     features_save_path='datasets/features/train/valid_features.pkl',
-    #     max_seq_len=165,
-    #     is_train=False  # 这里一定要为 False, 因为 valid data 不需要随机的样本
+    # convert_init_train_to_squad_format(
+    #     init_train_path=INIT_TRAIN_VALID_PATH,
+    #     save_path=INIT_TRAIN_VALID_SQUAD_SAVE_PATH
     # )
 
     # generate_tfrecord_from_json_file(
-    #     input_file_path='datasets/raw/init-train-valid-squad-format.json',
-    #     vocab_file_path='../vocabs/bert-base-chinese-vocab.txt',
-    #     output_save_path='datasets/tfrecords/origin/valid.tfrecord',
-    #     meta_save_path='datasets/tfrecords/origin/valid_meta.json',
-    #     features_save_path='datasets/features/origin/valid_features.pkl',
+    #     input_file_path='datasets/version_2/inference/valid.json',
+    #     vocab_file_path='../bert-base-chinese/vocab.txt',
+    #     output_save_path='datasets/version_2/inference/tfrecords/valid.tfrecord',
+    #     meta_save_path='datasets/version_2/inference/meta/valid_meta.json',
+    #     features_save_path='datasets/version_2/inference/features/valid_features.pkl',
     #     max_seq_len=165,
-    #     is_train=False  # 这里一定要为 False, 因为 valid data 不需要随机的样本
+    #     random=False
     # )
 
     # 处理训练数据的推断结果
@@ -487,22 +492,9 @@ if __name__ == '__main__':
     #     save_path='inference_results/origin/postprocessed/train_results.json'
     # )
 
-    # 处理验证集的推断结果
-    # postprocess_results(
-    #     raw_data_path='datasets/raw/init-train-valid-squad-format.json',
-    #     features_path='datasets/features/origin/valid_features.pkl',
-    #     results_path='inference_results/origin/raw/valid_results.json',
-    #     save_path='inference_results/origin/postprocessed/valid_results.json'
-    # )
-
     # 训练集 PRF
     compute_prf(
-        features_path='datasets/version_1/tfrecords/inference/features/train_features.pkl',
-        results_path='inference_results/version_1/raw/train_results.json'
+        post_results_path='inference_results/version_1/postprocessed/train_results.json'
     )
 
-    # 测试机 PRF
-    compute_prf(
-        features_path='datasets/version_1/tfrecords/inference/features/valid_features.pkl',
-        results_path='inference_results/version_1/raw/valid_results.json'
-    )
+    pass

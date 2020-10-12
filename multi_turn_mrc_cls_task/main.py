@@ -1,6 +1,9 @@
 # -*- coding: utf - 8 -*-
 
 import os
+
+os.environ['CUDA_VISIBLE_DEVICES'] = '1'
+
 import json
 
 import tensorflow as tf
@@ -23,16 +26,10 @@ class MultiTurnMRCCLSTask:
     def __init__(
             self,
             kwargs,
-            use_pretrain=None,
             batch_size=None,
             inference_model_dir=None
     ):
 
-        # param check
-        if use_pretrain is None:
-            raise ValueError('Param use_pretrain must be passed')
-
-        self.use_pretrain = use_pretrain
         self.batch_size = batch_size
         self.inference_model_dir = inference_model_dir
 
@@ -92,7 +89,7 @@ class MultiTurnMRCCLSTask:
             batch_size=self.batch_size
         )
         valid_dataset = read_and_batch_from_tfrecord(
-            filepath=self.valid_tfrecord_meta_path,
+            filepath=self.valid_tfrecord_file_path,
             max_seq_len=self.max_seq_len,
             repeat=False,
             shuffle=False,
@@ -114,10 +111,7 @@ class MultiTurnMRCCLSTask:
         #   3. load checkpoint
         #   4. compile
         with get_strategy_scope(self.distribution_strategy):
-            model = create_model(
-                is_train=True,
-                use_pretrain=self.use_pretrain
-            )
+            model = create_model(is_train=True)
             optimizer = self._create_optimizer()
 
             # load checkpoint
@@ -125,11 +119,6 @@ class MultiTurnMRCCLSTask:
                 model=model,
                 optimizer=optimizer
             )
-
-            latest_checkpoint = tf.train.latest_checkpoint(self.model_save_dir)
-            if latest_checkpoint:
-                checkpoint.restore(latest_checkpoint)
-                logging.info('Load checkpoint {} from {}'.format(latest_checkpoint, self.model_save_dir))
 
             model.compile(
                 optimizer=optimizer,
@@ -205,13 +194,13 @@ class MultiTurnMRCCLSTask:
         )
 
         with get_strategy_scope(self.distribution_strategy):
-            model = create_model(is_train=False, use_pretrain=False)
+            model = create_model(is_train=False)
             checkpoint = tf.train.Checkpoint(model=model)
             checkpoint.restore(
                 tf.train.latest_checkpoint(
                     self.inference_model_dir
                 )
-            )
+            ).assert_consumed()
             logging.info('Loading checkpoint {} from {}'.format(
                 tf.train.latest_checkpoint(self.inference_model_dir),
                 self.inference_model_dir
@@ -253,17 +242,17 @@ class MultiTurnMRCCLSTask:
 TASK_NAME = 'multi_turn_mrc_cls_task'
 
 # TFRecord
-TRAIN_TFRECORD_FILE_PATH = 'datasets/tfrecords/train.tfrecord'
-VALID_TFRECORD_FILE_PATH = 'datasets/tfrecords/valid.tfrecord'
+TRAIN_TFRECORD_FILE_PATH = 'datasets/version_2/train/tfrecords/train.tfrecord'
+VALID_TFRECORD_FILE_PATH = 'datasets/version_2/train/tfrecords/valid.tfrecord'
 
 # tfrecord meta data
-TRAIN_TFRECORD_META_PATH = 'datasets/tfrecords/train_meta.json'
-VALID_TFRECORD_META_PATH = 'datasets/tfrecords/valid_meta.json'
+TRAIN_TFRECORD_META_PATH = 'datasets/version_2/train/meta/train_meta.json'
+VALID_TFRECORD_META_PATH = 'datasets/version_2/train/meta/valid_meta.json'
 
-MODEL_SAVE_DIR = 'saved_models'
-TENSORBOARD_LOG_DIR = 'logs'
+MODEL_SAVE_DIR = 'saved_models/version_2/multi_turn_cls.ckpt'
+TENSORBOARD_LOG_DIR = 'logs/version_2'
 
-VOCAB_FILE_PATH = '../vocabs/bert-base-chinese-vocab.txt'
+VOCAB_FILE_PATH = '../bert-base-chinese/vocab.txt'
 MAX_SEQ_LEN = 165
 PREDICT_BATCH_SIZE = 5300
 PREDICT_THRESHOLD = 0.5
@@ -276,7 +265,7 @@ def get_model_params():
     return dict(
         task_name=TASK_NAME,
         distribution_strategy='one_device',
-        epochs=10,
+        epochs=50,
         predict_batch_size=PREDICT_BATCH_SIZE,
         model_save_dir=MODEL_SAVE_DIR,
         train_tfrecord_file_path=TRAIN_TFRECORD_FILE_PATH,
@@ -300,9 +289,7 @@ def main():
     logging.set_verbosity(logging.INFO)
     task = MultiTurnMRCCLSTask(
         get_model_params(),
-        use_pretrain=True,
-        batch_size=48,
-        inference_model_dir='gs://leeyu-dataset-public'
+        batch_size=24
     )
     return task
 
@@ -310,14 +297,4 @@ def main():
 if __name__ == '__main__':
     task = main()
 
-    # 推断 valid
-    task.predict_tfrecord(
-        tfrecord_path='datasets/version_1/tfrecords/inference/valid.tfrecord',
-        save_path='inference_results/version_1/raw/valid_results.json'
-    )
-
-    # 推断 train
-    task.predict_tfrecord(
-        tfrecord_path='datasets/version_1/tfrecords/inference/train.tfrecord',
-        save_path='inference_results/origin/train_results.json'
-    )
+    task.train()
