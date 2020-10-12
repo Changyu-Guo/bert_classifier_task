@@ -30,7 +30,7 @@ class MultiTurnMRCCLSTask:
 
         self.use_net_pretrain = use_net_pretrain
 
-        if self.use_net_pretrain:
+        if not self.use_net_pretrain:
             os.environ['CUDA_VISIBLE_DEVICES'] = '1'
 
         self.batch_size = batch_size

@@ -11,7 +11,6 @@ def create_model(use_net_pretrain, is_train=True):
     segment_ids = keras.Input((None,), name='segment_ids', dtype=tf.int64)
 
     # load bert core
-
     if use_net_pretrain:
         core_bert = TFBertModel.from_pretrained('bert-base-chinese')
     else:
@@ -47,7 +46,3 @@ def create_model(use_net_pretrain, is_train=True):
     )
 
     return model
-
-
-if __name__ == '__main__':
-    create_model(is_train=True)

@@ -23,16 +23,16 @@ class MRCTask:
     def __init__(
             self,
             kwargs,
-            use_pretrain=None,
             batch_size=None,
+            use_net_pretrain=None
     ):
 
         # param check
-        if use_pretrain is None:
+        if use_net_pretrain is None:
             raise ValueError('Param use_pretrain must be passed')
 
         self.batch_size = batch_size
-        self.use_pretrain = use_pretrain
+        self.use_net_pretrain = use_net_pretrain
 
         self.task_name = kwargs['task_name']
 
@@ -326,8 +326,8 @@ def main():
     logging.set_verbosity(logging.INFO)
     task = MRCTask(
         get_model_params(),
-        use_pretrain=True,
-        batch_size=48
+        batch_size=48,
+        use_net_pretrain=True,
     )
     return task
 
@@ -335,32 +335,4 @@ def main():
 if __name__ == '__main__':
     task = main()
 
-    # 推断上一步骤的验证集结果
-    # task.predict_tfrecord(
-    #     tfrecord_path='datasets/tfrecords/origin/first_step/valid.tfrecord',
-    #     save_path='inference_results/origin/raw/first_step/valid_results.json'
-    # )
-
-    # task.predict_tfrecord(
-    #     tfrecord_path='datasets/tfrecords/train/last_version_1/train.tfrecord',
-    #     save_path='inference_results/train/raw/first_step/last_version_1/train_result.json'
-    # )
-
-    # task.predict_tfrecord(
-    #     inference_model_dir='saved_models/version_2',
-    #     tfrecord_path='datasets/tfrecords/inference/last_version_1/first_step/valid.tfrecord',
-    #     save_path='inference_results/last_task/use_version_2/first_step/raw/valid_results.json'
-    # )
-    # task.predict_tfrecord(
-    #     inference_model_dir='saved_models/version_2',
-    #     tfrecord_path='datasets/tfrecords/inference/last_version_1/second_step/train.tfrecord',
-    #     save_path='inference_results/last_task/use_version_2/second_step/raw/train_results.json'
-    # )
-
-    task.predict_tfrecord(
-        inference_model_dir='saved_models/version_1',
-        tfrecord_path='datasets/version_1/inference/last_version_1/second_step/tfrecords/valid.tfrecord',
-        save_path='inference_results/version_1/last_version_1/second_step/raw/valid_results.json'
-    )
-
-    # task.train()
+    task.train()
