@@ -17,7 +17,6 @@ from absl import logging
 
 import tokenization
 from common_data_utils import get_squad_json_template
-from common_data_utils import get_squad_json_paragraph_template
 from common_data_utils import get_squad_json_qas_item_template
 from common_data_utils import extract_examples_dict_from_relation_questions
 
@@ -71,6 +70,7 @@ def convert_origin_data_for_train(origin_data_path, save_path):
                     'text': s,
                     'answer_start': s_start_pos
                 }],
+                'sro_index': sro_index,
                 'id': 'id_' + str(qas_id)
             }
             qas_id += 1
@@ -82,6 +82,7 @@ def convert_origin_data_for_train(origin_data_path, save_path):
                     'text': o,
                     'answer_start': o_start_pos
                 }],
+                'sro_index': sro_index,
                 'id': 'id_' + str(qas_id)
             }
             qas_id += 1
@@ -1320,10 +1321,10 @@ def postprocess_results(
 
 if __name__ == '__main__':
 
-    convert_origin_data_for_train(
-        origin_data_path='../common-datasets/init-train-train.json',
-        save_path='datasets/version_3/train/train.json',
-    )
+    # convert_origin_data_for_train(
+    #     origin_data_path='../common-datasets/init-train-valid.json',
+    #     save_path='datasets/version_3/train/valid.json',
+    # )
 
     # convert_origin_data_for_infer(
     #     origin_data_path='../common-datasets/init-train-valid-squad-format.json',
@@ -1343,18 +1344,18 @@ if __name__ == '__main__':
     #     step='second'
     # )
 
-    # generate_tfrecord_from_json_file(
-    #     input_file_path='datasets/version_1/inference/last_version_1/second_step/valid_results.json',
-    #     vocab_file_path='../vocabs/bert-base-chinese-vocab.txt',
-    #     tfrecord_save_path='datasets/version_1/inference/last_version_1/second_step/tfrecords/valid.tfrecord',
-    #     meta_save_path='datasets/version_1/inference/last_version_1/second_step/meta/valid_meta.json',
-    #     features_save_path='datasets/version_1/inference/last_version_1/second_step/features/valid_features.pkl',
-    #     max_seq_len=165,
-    #     max_query_len=45,
-    #     doc_stride=165,
-    #     is_train=False,
-    #     version_2_with_negative=False
-    # )
+    generate_tfrecord_from_json_file(
+        input_file_path='datasets/version_3/train/valid.json',
+        vocab_file_path='../vocabs/bert-base-chinese-vocab.txt',
+        tfrecord_save_path='datasets/version_3/train/tfrecords/valid.tfrecord',
+        meta_save_path='datasets/version_3/train/meta/valid_meta.json',
+        features_save_path='datasets/version_3/train/features/valid_features.pkl',
+        max_seq_len=165,
+        max_query_len=45,
+        doc_stride=165,
+        is_train=True,
+        version_2_with_negative=False
+    )
 
     # 推断第一步
     # postprocess_results(
