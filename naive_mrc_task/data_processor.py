@@ -44,8 +44,7 @@ def convert_origin_data_for_train(origin_data_path, save_path):
 
         squad_json_paragraph = {
             'context': text,
-            'qas': [],
-            'origin_sros': sros,
+            'qas': []
         }
 
         for sro_index, sro in enumerate(sros):
@@ -70,7 +69,6 @@ def convert_origin_data_for_train(origin_data_path, save_path):
                     'text': s,
                     'answer_start': s_start_pos
                 }],
-                'sro_index': sro_index,
                 'id': 'id_' + str(qas_id)
             }
             qas_id += 1
@@ -82,7 +80,6 @@ def convert_origin_data_for_train(origin_data_path, save_path):
                     'text': o,
                     'answer_start': o_start_pos
                 }],
-                'sro_index': sro_index,
                 'id': 'id_' + str(qas_id)
             }
             qas_id += 1
@@ -541,7 +538,7 @@ def read_squad_examples(input_file, is_training, version_2_with_negative):
     reader.close()
 
     def is_whitespace(c):
-        if c == " " or c == "\t" or c == "\r" or c == "\n" or ord(c) == 0x202F:
+        if c == " " or c == "\t" or c == "\r" or c == "\n" or ord(c) == 0x202F or ord(c) == 0xa0 or c == u'\u3000':
             return True
         return False
 
@@ -568,14 +565,15 @@ def read_squad_examples(input_file, is_training, version_2_with_negative):
             qas_id = qa["id"]
             question_text = qa["question"]
 
-            # 在 example 中加入 sro_index
-            # 在推断中会使用到
-            sro_index = qa['sro_index']
-
             start_position = None
             end_position = None
             orig_answer_text = None
             is_impossible = False
+
+            if is_training:
+                sro_index = None
+            else:
+                sro_index = qa['sro_index']
 
             # 这里需要注意
             # train data 有 answer
@@ -633,12 +631,10 @@ def convert_examples_to_features(
         max_query_length,
         is_training,
         output_fn,
-        batch_size=None
 ):
 
     base_id = 1000000000
     unique_id = base_id
-    feature = None
     for example_index, example in enumerate(examples):
         query_tokens = tokenizer.tokenize(example.question_text)
 
@@ -774,22 +770,6 @@ def convert_examples_to_features(
 
             unique_id += 1
 
-    # if not is_training and feature:
-    #     assert batch_size
-    #     num_padding = 0
-    #     num_examples = unique_id - base_id
-    #     if unique_id % batch_size != 0:
-    #         num_padding = batch_size - (num_examples % batch_size)
-    #     logging.info("Adding padding examples to make sure no partial batch.")
-    #     logging.info("Adds %d padding examples for inference.", num_padding)
-    #     dummy_feature = copy.deepcopy(feature)
-    #     for _ in range(num_padding):
-    #         dummy_feature.unique_id = unique_id
-    #
-    #         # Run callback
-    #         output_fn(feature, is_padding=True)
-    #         unique_id += 1
-
     return unique_id - base_id
 
 
@@ -828,8 +808,7 @@ def generate_tfrecord_from_json_file(
         doc_stride=doc_stride,
         max_query_length=max_query_len,
         is_training=is_train,
-        output_fn=_append_feature,
-        batch_size=None
+        output_fn=_append_feature
     )
 
     meta_data = {
@@ -1327,8 +1306,8 @@ if __name__ == '__main__':
     # )
 
     # convert_origin_data_for_infer(
-    #     origin_data_path='../common-datasets/init-train-valid-squad-format.json',
-    #     save_path='datasets/raw/inference/origin/second_step/valid.json',
+    #     origin_data_path='../common-datasets/init-train-train.json.json',
+    #     save_path='datasets/version_3/inference/train.json',
     #     step='second'
     # )
 
@@ -1338,24 +1317,24 @@ if __name__ == '__main__':
     #     step='second'
     # )
 
-    # convert_last_step_results_for_infer(
-    #     results_path='inference_results/last_task/use_version_1/first_step/postprocessed/valid_results.json',
-    #     save_path='datasets/raw/inference/last_version_1/second_step/from_version_1/valid.json',
-    #     step='second'
-    # )
-
-    generate_tfrecord_from_json_file(
-        input_file_path='datasets/version_3/train/valid.json',
-        vocab_file_path='../vocabs/bert-base-chinese-vocab.txt',
-        tfrecord_save_path='datasets/version_3/train/tfrecords/valid.tfrecord',
-        meta_save_path='datasets/version_3/train/meta/valid_meta.json',
-        features_save_path='datasets/version_3/train/features/valid_features.pkl',
-        max_seq_len=165,
-        max_query_len=45,
-        doc_stride=165,
-        is_train=True,
-        version_2_with_negative=False
+    convert_last_step_results_for_infer(
+        results_path='inference_results/last_task/use_version_1/first_step/postprocessed/valid_results.json',
+        save_path='datasets/raw/inference/last_version_1/second_step/from_version_1/valid.json',
+        step='second'
     )
+
+    # generate_tfrecord_from_json_file(
+    #     input_file_path='datasets/version_3/train/valid.json',
+    #     vocab_file_path='../bert-base-chinese/vocab.txt',
+    #     tfrecord_save_path='datasets/version_3/train/tfrecords/valid.tfrecord',
+    #     meta_save_path='datasets/version_3/train/meta/valid_meta.json',
+    #     features_save_path='datasets/version_3/train/features/valid_features.pkl',
+    #     max_seq_len=165,
+    #     max_query_len=45,
+    #     doc_stride=165,
+    #     is_train=True,
+    #     version_2_with_negative=False
+    # )
 
     # 推断第一步
     # postprocess_results(

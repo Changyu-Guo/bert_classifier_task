@@ -4,15 +4,18 @@ import tensorflow as tf
 from transformers import BertConfig, TFBertModel
 
 
-def create_model(max_seq_len, is_train=True, use_net_pretrain=False):
+def create_model(is_train=True, use_net_pretrain=False):
 
     # 输入
     inputs_ids = tf.keras.Input((None,), name='inputs_ids', dtype=tf.int64)
     inputs_mask = tf.keras.Input((None,), name='inputs_mask', dtype=tf.int64)
     segment_ids = tf.keras.Input((None,), name='segment_ids', dtype=tf.int64)
 
+    # 从网络上加载模型
     if use_net_pretrain:
         core_bert = TFBertModel.from_pretrained('bert-base-chinese')
+
+    # 加载本地模型
     else:
         bert_config = BertConfig.from_json_file('../bert-base-chinese/bert_config.json')
         core_bert = TFBertModel(bert_config)

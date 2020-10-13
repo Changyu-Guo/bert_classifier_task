@@ -14,7 +14,7 @@ from optimization import create_optimizer
 from utils.distribu_utils import get_distribution_strategy
 from utils.distribu_utils import get_strategy_scope
 from naive_mrc_task.input_pipeline import read_and_batch_from_tfrecord
-from naive_mrc_task.input_pipeline import map_data_to_model
+from naive_mrc_task.input_pipeline import map_data_to_model_train
 from naive_mrc_task.input_pipeline import map_data_to_model_infer
 
 
@@ -102,11 +102,11 @@ class MRCTask:
         )
 
         train_dataset = train_dataset.map(
-            map_data_to_model,
+            map_data_to_model_train,
             num_parallel_calls=tf.data.experimental.AUTOTUNE
         )
         valid_dataset = valid_dataset.map(
-            map_data_to_model,
+            map_data_to_model_train,
             num_parallel_calls=tf.data.experimental.AUTOTUNE
         )
 
@@ -118,9 +118,8 @@ class MRCTask:
         with get_strategy_scope(self.distribution_strategy):
 
             model = create_model(
-                max_seq_len=self.max_seq_len,
                 is_train=True,
-                use_pretrain=self.use_pretrain
+                use_net_pretrain=self.use_net_pretrain
             )
             optimizer = self._create_optimizer()
 
@@ -129,11 +128,6 @@ class MRCTask:
                 model=model,
                 optimizer=optimizer
             )
-
-            latest_checkpoint = tf.train.latest_checkpoint(self.model_save_dir)
-            if latest_checkpoint:
-                checkpoint.restore(latest_checkpoint)
-                logging.info('Load checkpoint {} from {}'.format(latest_checkpoint, self.model_save_dir))
 
             loss_func = tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True)
             model.compile(
@@ -213,8 +207,7 @@ class MRCTask:
 
         with get_strategy_scope(self.distribution_strategy):
             model = create_model(
-                max_seq_len=self.max_seq_len,
-                is_train=False, use_pretrain=False
+                is_train=False, use_net_pretrain=False
             )
             checkpoint = tf.train.Checkpoint(model=model)
             checkpoint.restore(
@@ -274,18 +267,18 @@ class MRCTask:
 TASK_NAME = 'mrc'
 
 # TFRecord
-TRAIN_TFRECORD_FILE_PATH = 'datasets/tfrecords/train/last_task/train.tfrecord'
-VALID_TFRECORD_FILE_PATH = 'datasets/tfrecords/train/last_task/valid.tfrecord'
+TRAIN_TFRECORD_FILE_PATH = 'datasets/version_3/train/tfrecords/train.tfrecord'
+VALID_TFRECORD_FILE_PATH = 'datasets/version_3/train/tfrecords/valid.tfrecord'
 
 # tfrecord meta data
-TRAIN_TFRECORD_META_PATH = 'datasets/tfrecords/train/last_task/train_meta.json'
-VALID_TFRECORD_META_PATH = 'datasets/tfrecords/train/last_task/valid_meta.json'
+TRAIN_TFRECORD_META_PATH = 'datasets/version_3/train/meta/train_meta.json'
+VALID_TFRECORD_META_PATH = 'datasets/version_3/train/meta/valid_meta.json'
 
-MODEL_SAVE_DIR = 'saved_models'
-TENSORBOARD_LOG_DIR = 'logs'
+MODEL_SAVE_DIR = 'saved_models/version_3/naive_mrc.ckpt'
+TENSORBOARD_LOG_DIR = 'logs/version_3'
 
 # tokenize
-VOCAB_FILE_PATH = '../vocabs/bert-base-chinese-vocab.txt'
+VOCAB_FILE_PATH = '../bert-base-chinese/vocab.txt'
 
 # dataset process relate
 MAX_SEQ_LEN = 165
@@ -301,7 +294,7 @@ def get_model_params():
     return dict(
         task_name=TASK_NAME,
         distribution_strategy='one_device',
-        epochs=10,
+        epochs=20,
         predict_batch_size=PREDICT_BATCH_SIZE,
         model_save_dir=MODEL_SAVE_DIR,
         train_tfrecord_file_path=TRAIN_TFRECORD_FILE_PATH,

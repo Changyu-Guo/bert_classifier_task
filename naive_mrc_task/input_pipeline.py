@@ -48,7 +48,7 @@ def read_and_batch_from_tfrecord(
     return dataset
 
 
-def map_data_to_model(data):
+def map_data_to_model_train(data):
 
     x = {
         'inputs_ids': data['inputs_ids'],
