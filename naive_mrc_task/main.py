@@ -31,6 +31,9 @@ class MRCTask:
         if use_net_pretrain is None:
             raise ValueError('Param use_pretrain must be passed')
 
+        if not use_net_pretrain:
+            os.environ['CUDA_VISIBLE_DEVICES'] = '1'
+
         self.batch_size = batch_size
         self.use_net_pretrain = use_net_pretrain
 
