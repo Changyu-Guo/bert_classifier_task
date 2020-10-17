@@ -130,19 +130,13 @@ class MRCTask:
                 model=model,
                 optimizer=optimizer
             )
-            if tf.train.latest_checkpoint('saved_models/version_3'):
-                checkpoint.restore(tf.train.latest_checkpoint('saved_models/version_3'))
-            logging.info('Load checkpoint {} from {}'.format(
-                tf.train.latest_checkpoint('saved_models/version_3'),
-                'saved_model/version_3'
-            ))
 
             loss_func = tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True)
             model.compile(
                 optimizer=optimizer,
                 loss=[loss_func, loss_func],
                 loss_weights=[0.5, 0.5],
-                metrics=['acc']
+                metrics=['acc'],
             )
 
         callbacks = self._create_callbacks()
@@ -196,7 +190,9 @@ class MRCTask:
         if self.enable_early_stopping:
             callbacks.append(
                 tf.keras.callbacks.EarlyStopping(
-                    patience=5,
+                    monitor='val_end_logits_acc',
+                    mode='max',
+                    patience=6,
                     restore_best_weights=True
                 )
             )
@@ -300,7 +296,7 @@ def get_model_params():
     return dict(
         task_name=TASK_NAME,
         distribution_strategy='one_device',
-        epochs=50,
+        epochs=100,
         predict_batch_size=PREDICT_BATCH_SIZE,
         model_save_dir=MODEL_SAVE_DIR,
         train_tfrecord_file_path=TRAIN_TFRECORD_FILE_PATH,
