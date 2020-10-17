@@ -197,13 +197,13 @@ class MultiTurnMRCCLSTask:
         )
 
         with get_strategy_scope(self.distribution_strategy):
-            model = create_model(is_train=False)
+            model = create_model(use_net_pretrain=False, is_train=False)
             checkpoint = tf.train.Checkpoint(model=model)
             checkpoint.restore(
                 tf.train.latest_checkpoint(
                     self.inference_model_dir
                 )
-            ).assert_consumed()
+            )
             logging.info('Loading checkpoint {} from {}'.format(
                 tf.train.latest_checkpoint(self.inference_model_dir),
                 self.inference_model_dir
@@ -257,7 +257,7 @@ TENSORBOARD_LOG_DIR = 'logs/version_2'
 
 VOCAB_FILE_PATH = '../bert-base-chinese/vocab.txt'
 MAX_SEQ_LEN = 165
-PREDICT_BATCH_SIZE = 5300
+PREDICT_BATCH_SIZE = 512
 PREDICT_THRESHOLD = 0.5
 
 # train relate
@@ -293,7 +293,8 @@ def main():
     task = MultiTurnMRCCLSTask(
         get_model_params(),
         batch_size=48,
-        use_net_pretrain=True
+        use_net_pretrain=False,
+        inference_model_dir='saved_models/version_1'
     )
     return task
 
@@ -301,4 +302,7 @@ def main():
 if __name__ == '__main__':
     task = main()
 
-    task.train()
+    task.predict_tfrecord(
+        tfrecord_path='datasets/version_1/inference/tfrecords/valid.tfrecord',
+        save_path='inference_results/version_1/raw/valid_results.json'
+    )

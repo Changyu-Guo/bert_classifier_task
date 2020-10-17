@@ -50,9 +50,6 @@ class MRCTask:
         self.max_query_len = kwargs['max_query_len']
         self.doc_stride = kwargs['doc_stride']
 
-        # model and tokenizer
-        self.vocab_file_path = kwargs['vocab_file_path']
-
         # optimizer
         self.init_lr = kwargs['init_lr']
         self.end_lr = kwargs['end_lr']
@@ -82,7 +79,9 @@ class MRCTask:
 
         train_data_size = self.train_meta_data['data_size']
         # for train
-        self.steps_per_epoch = int(train_data_size // self.batch_size) + 1
+        self.steps_per_epoch = int(train_data_size // self.batch_size)
+        if train_data_size % self.batch_size != 0:
+            self.steps_per_epoch += 1
         # for warmup
         self.total_train_steps = self.steps_per_epoch * self.epochs
 
@@ -131,17 +130,24 @@ class MRCTask:
                 model=model,
                 optimizer=optimizer
             )
+            if tf.train.latest_checkpoint('saved_models/version_3'):
+                checkpoint.restore(tf.train.latest_checkpoint('saved_models/version_3'))
+            logging.info('Load checkpoint {} from {}'.format(
+                tf.train.latest_checkpoint('saved_models/version_3'),
+                'saved_model/version_3'
+            ))
 
             loss_func = tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True)
             model.compile(
                 optimizer=optimizer,
                 loss=[loss_func, loss_func],
-                loss_weights=[0.5, 0.5]
+                loss_weights=[0.5, 0.5],
+                metrics=['acc']
             )
 
         callbacks = self._create_callbacks()
 
-        print(model.evaluate(valid_dataset, verbose=0, return_dict=True))
+        # print(model.evaluate(valid_dataset, verbose=0, return_dict=True))
         model.fit(
             train_dataset,
             epochs=self.epochs,
@@ -190,7 +196,7 @@ class MRCTask:
         if self.enable_early_stopping:
             callbacks.append(
                 tf.keras.callbacks.EarlyStopping(
-                    patience=2,
+                    patience=5,
                     restore_best_weights=True
                 )
             )
@@ -280,36 +286,32 @@ VALID_TFRECORD_META_PATH = 'datasets/version_3/train/meta/valid_meta.json'
 MODEL_SAVE_DIR = 'saved_models/version_3/naive_mrc.ckpt'
 TENSORBOARD_LOG_DIR = 'logs/version_3'
 
-# tokenize
-VOCAB_FILE_PATH = '../bert-base-chinese/vocab.txt'
-
 # dataset process relate
-MAX_SEQ_LEN = 165
-MAX_QUERY_LEN = 45
+MAX_SEQ_LEN = 200
+MAX_QUERY_LEN = 50
 DOC_STRIDE = 128
 PREDICT_BATCH_SIZE = 128
 
 # train relate
-LEARNING_RATE = 3e-5
+LEARNING_RATE = 1e-4
 
 
 def get_model_params():
     return dict(
         task_name=TASK_NAME,
         distribution_strategy='one_device',
-        epochs=20,
+        epochs=50,
         predict_batch_size=PREDICT_BATCH_SIZE,
         model_save_dir=MODEL_SAVE_DIR,
         train_tfrecord_file_path=TRAIN_TFRECORD_FILE_PATH,
         valid_tfrecord_file_path=VALID_TFRECORD_FILE_PATH,
         train_tfrecord_meta_path=TRAIN_TFRECORD_META_PATH,
         valid_tfrecord_meta_path=VALID_TFRECORD_META_PATH,
-        vocab_file_path=VOCAB_FILE_PATH,
         max_seq_len=MAX_SEQ_LEN,
         max_query_len=MAX_QUERY_LEN,
         doc_stride=DOC_STRIDE,
         init_lr=LEARNING_RATE,
-        end_lr=0.0,
+        end_lr=1e-7,
         warmup_steps_ratio=0.1,
         enable_checkpointing=False,  # Notice 开启此选项可能会存储大量的 Checkpoint ####
         enable_tensorboard=True,
@@ -322,7 +324,7 @@ def main():
     logging.set_verbosity(logging.INFO)
     task = MRCTask(
         get_model_params(),
-        batch_size=48,
+        batch_size=40,
         use_net_pretrain=True,
     )
     return task
@@ -330,5 +332,11 @@ def main():
 
 if __name__ == '__main__':
     task = main()
+
+    # task.predict_tfrecord(
+    #     inference_model_dir='saved_models/version_3',
+    #     tfrecord_path='datasets/version_3/inference/origin/first_and_second/tfrecords/valid.tfrecord',
+    #     save_path='inference_results/version_3/origin/first_and_second/raw/valid_results.json'
+    # )
 
     task.train()

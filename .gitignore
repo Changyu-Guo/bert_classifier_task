@@ -1,5 +1,7 @@
 inference_results
 
+multi_turn_mrc_cls_task/inference_results
+
 logs
 
 /pretrained_model
@@ -7,13 +9,5 @@ logs
 saved_models
 
 train_all_nbest.json
-
-naive_mrc_task/inference_results/version_2/last_version_1/first_step/raw
-
-naive_mrc_task/inference_results/version_1/last_version_1/first_step/raw
-
-naive_mrc_task/inference_results/version_2/last_version_1/second_step/raw
-
-naive_mrc_task/inference_results/version_1/last_version_1/second_step/raw
 
 bert-base-chinese

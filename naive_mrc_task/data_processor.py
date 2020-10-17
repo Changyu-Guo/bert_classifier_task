@@ -17,7 +17,6 @@ from absl import logging
 
 import tokenization
 from common_data_utils import get_squad_json_template
-from common_data_utils import get_squad_json_qas_item_template
 from common_data_utils import extract_examples_dict_from_relation_questions
 
 
@@ -92,14 +91,13 @@ def convert_origin_data_for_train(origin_data_path, save_path):
     writer.close()
 
 
-# 所有的 ..._for_infer 函数都需要指定是为第一步推断准备数据还是为第二步推断准备数据
-def convert_origin_data_for_infer(origin_data_path, save_path, step='first'):
+def convert_origin_data_for_infer(origin_data_path, save_path, step='1'):
     """
         将原始数据转换为当前步骤的推断数据, 用于查看训练好的模型在正确数据上的 F 值 和 EM
     """
 
-    if step not in ['first', 'second', 'first_and_second']:
-        raise ValueError('step must be first or second or first_and_second')
+    if step not in ['1', '2', '12']:
+        raise ValueError('step must be 1 or 2 or 12')
 
     # relation -> questions
     relation_questions_dict = extract_examples_dict_from_relation_questions(
@@ -108,76 +106,104 @@ def convert_origin_data_for_infer(origin_data_path, save_path, step='first'):
     )
 
     with tf.io.gfile.GFile(origin_data_path, mode='r') as reader:
-        init_train_train = json.load(reader)
+        init_train_examples = json.load(reader)
     reader.close()
 
-    paragraphs = init_train_train['data'][0]['paragraphs']
+    squad_json = get_squad_json_template(title='naive mrc task')
 
     qas_id = 0
-    for paragraph_index, paragraph in enumerate(paragraphs):
+    for init_train_example in init_train_examples:
 
-        paragraphs[paragraph_index]['qas'] = []
+        text = init_train_example['text']
+        sros = init_train_example['sros']
 
-        origin_sros = paragraph['origin_sros']
+        squad_json_paragraph = {
+            'context': text,
+            'qas': [],
+            'origin_sros': sros,
+            'pred_sros': []
+        }
 
-        for sro_index, sro in enumerate(origin_sros):
+        for sro_index, sro in enumerate(sros):
             s = sro['subject']
             r = sro['relation']
+            o = sro['object']
 
-            # 将当前 origin relation 添加到 pred relation 中
-            # 方便后续代码的统一编写
-            paragraphs[paragraph_index]['pred_sros'].append({'relation': r})
+            squad_json_paragraph['pred_sros'].append({'relation': r})
 
             relation_questions = relation_questions_dict[r]
+
+            # 确定第一个问题的答案开始位置
+            s_start_pos = text.find(s)
+
+            # 确定第二个问题的答案开始位置
+            o_start_pos = text.find(o)
 
             question_a = relation_questions.question_a
             question_b = relation_questions.question_b.replace('subject', s)
 
             # 第一个推断步骤中只使用到第一个问题
-            if step == 'first':
+            if step == '1':
                 squad_json_qas_item = {
                     'question': question_a,
+                    'answers': [{
+                        'text': s,
+                        'answer_start': s_start_pos
+                    }],
                     'id': 'id_' + str(qas_id),
-                    'sro_index': sro_index
+                    'sro_index': sro_index,
                 }
                 qas_id += 1
-                paragraphs[paragraph_index]['qas'].append(squad_json_qas_item)
+                squad_json_paragraph['qas'].append(squad_json_qas_item)
 
-            if step == 'second':
+            if step == '2':
                 squad_json_qas_item = {
                     'question': question_b,
+                    'answers': [{
+                        'text': o,
+                        'answer_start': o_start_pos
+                    }],
                     'id': 'id_' + str(qas_id),
                     'sro_index': sro_index
                 }
                 qas_id += 1
-                paragraphs[paragraph_index]['qas'].append(squad_json_qas_item)
+                squad_json_paragraph['qas'].append(squad_json_qas_item)
 
-            if step == 'first_and_second':
+            if step == '12':
                 squad_json_qas_item = {
                     'question': question_a,
-                    'question_type': 'a',
+                    'answers': [{
+                        'text': s,
+                        'answer_start': s_start_pos
+                    }],
+                    'question_type': '1',
                     'id': 'id_' + str(qas_id),
                     'sro_index': sro_index
                 }
                 qas_id += 1
-                paragraphs[paragraph_index]['qas'].append(squad_json_qas_item)
+                squad_json_paragraph['qas'].append(squad_json_qas_item)
 
                 squad_json_qas_item = {
                     'question': question_b,
-                    'question_type': 'b',
+                    'answers': [{
+                        'text': o,
+                        'answer_start': o_start_pos
+                    }],
+                    'question_type': '2',
                     'id': 'id_' + str(qas_id),
                     'sro_index': sro_index
                 }
                 qas_id += 1
-                paragraphs[paragraph_index]['qas'].append(squad_json_qas_item)
+                squad_json_paragraph['qas'].append(squad_json_qas_item)
 
-    init_train_train['data'][0]['paragraphs'] = paragraphs
+        squad_json['data'][0]['paragraphs'].append(squad_json_paragraph)
+
     with tf.io.gfile.GFile(save_path, mode='w') as writer:
-        writer.write(json.dumps(init_train_train, ensure_ascii=False, indent=2) + '\n')
+        writer.write(json.dumps(squad_json, ensure_ascii=False, indent=2) + '\n')
     writer.close()
 
 
-def convert_last_step_results_for_train(results_path, save_path, step='first'):
+def convert_last_step_results_for_train(results_path, save_path):
     """
         将上一步的推断结果转换为本步骤训练需要的数据
         由于使用的是上一步骤的推断结果，因此存在没有答案的情况
@@ -197,7 +223,7 @@ def convert_last_step_results_for_train(results_path, save_path, step='first'):
 
     paragraphs = results['data'][0]['paragraphs']
 
-    _id = 0
+    qas_id = 0
     for paragraph_index, paragraph in enumerate(paragraphs):
 
         paragraphs[paragraph_index]['qas'] = []
@@ -230,67 +256,33 @@ def convert_last_step_results_for_train(results_path, save_path, step='first'):
             # 第二个问题需要将 subject 替换为当前的真实 subject
             question_b = relation_questions.question_b.replace('subject', s)
 
-            if step == 'first':
-                # 构建第一个问题的 qas item
-                squad_json_qas_item = get_squad_json_qas_item_template(
-                    question=question_a,
-                    answers=[{
-                        'text': s,
-                        'answer_start': s_start_pos
-                    }],
-                    sro_index=index,
-                    is_impossible=False,
-                    qas_id='id_' + str(_id)
-                )
-                _id += 1
-                paragraphs[paragraph_index]['qas'].append(squad_json_qas_item)
+            # 构建第一个问题的 qas item
+            squad_json_qas_item = {
+                'question': question_a,
+                'answers': [{
+                    'text': s,
+                    'answer_start': s_start_pos
+                }],
+                'is_impossible': False,
+                'qas_id': 'id_' + str(qas_id)
+            }
+            qas_id += 1
+            paragraphs[paragraph_index]['qas'].append(squad_json_qas_item)
 
-            elif step == 'second':
-                # 构建第二个问题的 qas item
-                squad_json_qas_item = get_squad_json_qas_item_template(
-                    question=question_b,
-                    answers=[{
-                        'text': o,
-                        'answer_start': o_start_pos
-                    }],
-                    sro_index=index,
-                    is_impossible=False,
-                    qas_id='id_' + str(_id)
-                )
-                _id += 1
-                paragraphs[paragraph_index]['qas'].append(squad_json_qas_item)
+            # 构建第二个问题的 qas item
+            squad_json_qas_item = {
+                'question': question_b,
+                'answers': [{
+                    'text': o,
+                    'answer_start': o_start_pos
+                }],
+                'is_impossible': False,
+                'qas_id': 'id_' + str(qas_id)
+            }
+            qas_id += 1
+            paragraphs[paragraph_index]['qas'].append(squad_json_qas_item)
 
-            elif step == 'first_and_second':
-                # 构建第一个问题的 qas item
-                squad_json_qas_item = get_squad_json_qas_item_template(
-                    question=question_a,
-                    answers=[{
-                        'text': s,
-                        'answer_start': s_start_pos
-                    }],
-                    sro_index=index,
-                    is_impossible=False,
-                    qas_id='id_' + str(_id)
-                )
-                _id += 1
-                paragraphs[paragraph_index]['qas'].append(squad_json_qas_item)
-
-                # 构建第二个问题的 qas item
-                squad_json_qas_item = get_squad_json_qas_item_template(
-                    question=question_b,
-                    answers=[{
-                        'text': o,
-                        'answer_start': o_start_pos
-                    }],
-                    sro_index=index,
-                    is_impossible=False,
-                    qas_id='id_' + str(_id)
-                )
-                _id += 1
-                paragraphs[paragraph_index]['qas'].append(squad_json_qas_item)
-
-        # pred sro 不存在完整的 s / r / o
-        # 因此只能构建出负样本
+        # 负样本
         for index, sro in enumerate(pred_sros):
             r = sro['relation']
 
@@ -301,16 +293,14 @@ def convert_last_step_results_for_train(results_path, save_path, step='first'):
             relation_questions = relation_questions_dict[r]
             question_a = relation_questions.question_a
 
-            if step == 'first':
-                squad_json_qas_item = get_squad_json_qas_item_template(
-                    question=question_a,
-                    answers=[],
-                    sro_index=index,
-                    is_impossible=True,
-                    qas_id='id_' + str(_id)
-                )
-                _id += 1
-                paragraphs[paragraph_index]['qas'].append(squad_json_qas_item)
+            squad_json_qas_item = {
+                'question': question_a,
+                'answers': [],
+                'is_impossible': True,
+                'qas_id': 'id_' + str(qas_id)
+            }
+            qas_id += 1
+            paragraphs[paragraph_index]['qas'].append(squad_json_qas_item)
 
     results['data'][0]['paragraphs'] = paragraphs
     with tf.io.gfile.GFile(save_path, mode='w') as writer:
@@ -318,7 +308,7 @@ def convert_last_step_results_for_train(results_path, save_path, step='first'):
     writer.close()
 
 
-def convert_last_step_results_for_infer(results_path, save_path, step='first'):
+def convert_last_step_results_for_infer(results_path, save_path, step='1'):
     """
         上一步骤对数据进行了推断之后, 要经过当前步骤的模型进行推断
         上一步骤推断出了原始文本应该包含的所有 relation, 这些 relation 中包含一些错误的 relation
@@ -335,8 +325,8 @@ def convert_last_step_results_for_infer(results_path, save_path, step='first'):
         准备好数据之后由模型对这些问题进行推断
     """
 
-    if step not in ['first', 'second']:
-        raise ValueError('step must be first or second')
+    if step not in ['1', '2']:
+        raise ValueError('step must be 1 or 2')
 
     # relation -> questions
     relation_questions_dict = extract_examples_dict_from_relation_questions(
@@ -366,11 +356,11 @@ def convert_last_step_results_for_infer(results_path, save_path, step='first'):
             relation_questions = relation_questions_dict[sro['relation']]
 
             # 第一步推断使用第一个问题
-            if step == 'first':
+            if step == '1':
                 question = relation_questions.question_a
 
             # 第二步推断使用第二个问题
-            if step == 'second':
+            if step == '2':
                 question = relation_questions.question_b.replace('subject', sro['subject'])
 
             squad_json_qas_item = {
@@ -677,11 +667,17 @@ def convert_examples_to_features(
         start_offset = 0
         while start_offset < len(all_doc_tokens):
             length = len(all_doc_tokens) - start_offset
+
+            # 长度过长, 需要分段
             if length > max_tokens_for_doc:
                 length = max_tokens_for_doc
+
             doc_spans.append(_DocSpan(start=start_offset, length=length))
+
             if start_offset + length == len(all_doc_tokens):
                 break
+
+            # 如果 doc_stride 小于 length, 则会产生重叠
             start_offset += min(length, doc_stride)
 
         for doc_span_index, doc_span in enumerate(doc_spans):
@@ -973,7 +969,7 @@ def postprocess_results(
         n_best_size,
         max_answer_length,
         do_lower_case,
-        step='first',
+        step,
         version_2_with_negative=False,
         null_score_diff_threshold=0.0,
         verbose=False
@@ -1001,10 +997,12 @@ def postprocess_results(
 
     assert len(features) == len(results)
 
+    # example_index 和 features 一对多
     example_index_to_features = collections.defaultdict(list)
     for feature in features:
         example_index_to_features[feature.example_index].append(feature)
 
+    # unique_id 和 result 一对一
     unique_id_to_result = {}
     for result in results:
         unique_id_to_result[result['unique_id']] = result
@@ -1014,7 +1012,6 @@ def postprocess_results(
         ['feature_index', 'start_index', 'end_index', 'start_logit', 'end_logit']
     )
 
-    # 不知道有啥用
     all_nbest_json = collections.OrderedDict()
 
     # 用于 evaluate
@@ -1233,7 +1230,6 @@ def postprocess_results(
 
         assert len(nbest_json) >= 1
 
-        final_answer = ''
         if not version_2_with_negative:
             all_predictions[example.qas_id] = nbest_json[0]["text"]
             final_answer = nbest_json[0]['text']
@@ -1269,9 +1265,9 @@ def postprocess_results(
             for qa in qas:
                 if qas_id == qa['id']:
                     question_type = qa['question_type']
-                    if question_type == 'a':
+                    if question_type == '1':
                         paragraphs[paragraph_index]['pred_sros'][sro_index]['subject'] = final_answer
-                    elif question_type == 'b':
+                    elif question_type == '2':
                         paragraphs[paragraph_index]['pred_sros'][sro_index]['object'] = final_answer
                     else:
                         raise ValueError('Unknown question type')
@@ -1289,13 +1285,13 @@ def postprocess_results(
         writer.write(json.dumps(all_predictions, ensure_ascii=False, indent=2) + '\n')
     writer.close()
 
-    with tf.io.gfile.GFile(os.path.join(save_dir, prefix + 'all_nbest.json'), mode='w') as writer:
-        writer.write(json.dumps(all_nbest_json, ensure_ascii=False, indent=2) + '\n')
-    writer.close()
+    # with tf.io.gfile.GFile(os.path.join(save_dir, prefix + 'all_nbest.json'), mode='w') as writer:
+    #     writer.write(json.dumps(all_nbest_json, ensure_ascii=False, indent=2) + '\n')
+    # writer.close()
 
-    with tf.io.gfile.GFile(os.path.join(save_dir, prefix + 'scores_diff.json'), mode='w') as writer:
-        writer.write(json.dumps(scores_diff_json, ensure_ascii=False, indent=2) + '\n')
-    writer.close()
+    # with tf.io.gfile.GFile(os.path.join(save_dir, prefix + 'scores_diff.json'), mode='w') as writer:
+    #     writer.write(json.dumps(scores_diff_json, ensure_ascii=False, indent=2) + '\n')
+    # writer.close()
 
 
 if __name__ == '__main__':
@@ -1306,48 +1302,47 @@ if __name__ == '__main__':
     # )
 
     # convert_origin_data_for_infer(
-    #     origin_data_path='../common-datasets/init-train-train.json.json',
-    #     save_path='datasets/version_3/inference/train.json',
-    #     step='second'
+    #     origin_data_path='../common-datasets/init-train-train.json',
+    #     save_path='datasets/version_3/inference/origin/first_and_second/train.json',
+    #     step='12'
     # )
 
     # convert_last_step_results_for_train(
-    #     'inference_results/origin/use_version_2/first_step/postprocessed/valid_results.json',
+    #     '../multi_turn_mrc_cls_task/inference_results/version_1/',
     #     'datasets/raw/train/origin/second_step/from_first_step/use_version_2/valid.json',
-    #     step='second'
     # )
 
-    convert_last_step_results_for_infer(
-        results_path='inference_results/last_task/use_version_1/first_step/postprocessed/valid_results.json',
-        save_path='datasets/raw/inference/last_version_1/second_step/from_version_1/valid.json',
-        step='second'
-    )
+    # convert_last_step_results_for_infer(
+    #     results_path='../multi_turn_mrc_cls_task/inference_results/version_1/postprocessed/valid_results.json',
+    #     save_path='datasets/version_3/inference/last_version_1/first/valid.json',
+    #     step='1'
+    # )
 
     # generate_tfrecord_from_json_file(
-    #     input_file_path='datasets/version_3/train/valid.json',
+    #     input_file_path='datasets/version_3/inference/last_version_1/first/valid.json',
     #     vocab_file_path='../bert-base-chinese/vocab.txt',
-    #     tfrecord_save_path='datasets/version_3/train/tfrecords/valid.tfrecord',
-    #     meta_save_path='datasets/version_3/train/meta/valid_meta.json',
-    #     features_save_path='datasets/version_3/train/features/valid_features.pkl',
-    #     max_seq_len=165,
-    #     max_query_len=45,
-    #     doc_stride=165,
-    #     is_train=True,
+    #     tfrecord_save_path='datasets/version_3/inference/last_version_1/first/tfrecords/valid.tfrecord',
+    #     meta_save_path='datasets/version_3/inference/last_version_1/first/meta/valid_meta.json',
+    #     features_save_path='datasets/version_3/inference/last_version_1/first/features/valid_features.pkl',
+    #     max_seq_len=200,
+    #     max_query_len=50,
+    #     doc_stride=128,
+    #     is_train=False,
     #     version_2_with_negative=False
     # )
 
     # 推断第一步
-    # postprocess_results(
-    #     raw_data_path='datasets/version_1/inference/last_version_1/second_step/valid_results.json',
-    #     features_path='datasets/version_1/inference/last_version_1/second_step/features/valid_features.pkl',
-    #     results_path='inference_results/version_1/last_version_1/second_step/raw/valid_results.json',
-    #     save_dir='inference_results/version_1/last_version_1/second_step/postprocessed',
-    #     prefix='valid_',
-    #     n_best_size=20,
-    #     max_answer_length=5,
-    #     do_lower_case=True,
-    #     step='second',
-    #     version_2_with_negative=False
-    # )
+    postprocess_results(
+        raw_data_path='datasets/version_3/inference/origin/first_and_second/valid.json',
+        features_path='datasets/version_3/inference/origin/first_and_second/features/valid_features.pkl',
+        results_path='inference_results/version_3/origin/first_and_second/raw/valid_results.json',
+        save_dir='inference_results/version_3/origin/first_and_second/postprocessed',
+        prefix='valid_',
+        n_best_size=20,
+        max_answer_length=10,
+        do_lower_case=True,
+        step='first_and_second',
+        version_2_with_negative=False
+    )
 
     pass

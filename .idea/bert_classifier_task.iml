@@ -8,7 +8,7 @@
       <excludeFolder url="file://$MODULE_DIR$/pretrained_model" />
       <excludeFolder url="file://$MODULE_DIR$/saved_models" />
     </content>
-    <orderEntry type="jdk" jdkName="Python 3.6" jdkType="Python SDK" />
+    <orderEntry type="jdk" jdkName="Remote Python 3.6.9 (sftp://root@10.168.2.67:10222/usr/bin/python3)" jdkType="Python SDK" />
     <orderEntry type="sourceFolder" forTests="false" />
   </component>
 </module>

@@ -93,15 +93,20 @@ def extract_examples_from_init_train(init_train_path: str = INIT_TRAIN_TXT_PATH)
     init_train_examples = []
     for item in init_train:
         item = json.loads(item)
-        text = item['text'].strip()
+
+        text = ' '.join(item['text'].strip().split())
+
+        sros = []
         sro_list = item['sro_list']
-        sros = [
-            {
-                'relation': sro['relation'].strip(),
-                'subject': sro['subject'].strip(),
-                'object': sro['object'].strip()
-            } for sro in sro_list
-        ]
+        for sro in sro_list:
+            relation_ = ' '.join(sro['relation'].strip().split())
+            subject_ = ' '.join(sro['subject'].strip().split())
+            object_ = ' '.join(sro['object'].strip().split())
+            sros.append({
+                'relation': relation_,
+                'subject': subject_,
+                'object': object_
+            })
         init_train_example = InitTrainExample(text, sros)
         init_train_examples.append(init_train_example)
     return init_train_examples
@@ -219,35 +224,5 @@ def get_squad_json_template(title: str) -> Dict:
     }
 
 
-def get_squad_json_paragraph_template(
-        text: str,
-        origin_sros: List,
-        pred_sros: List
-) -> Dict:
-    return {
-        'context': text,
-        'qas': [],
-        'origin_sros': origin_sros,
-        'pred_sros': pred_sros
-    }
-
-
-def get_squad_json_qas_item_template(
-        question: str,
-        answers: List,
-        sro_index: int,
-        qas_id: str,
-        is_impossible: bool = False
-) -> Dict:
-    return {
-        'question': question,
-        'answers': answers,
-        'sro_index': sro_index,
-        'is_impossible': is_impossible,
-        'id': qas_id
-    }
-
-
 if __name__ == '__main__':
-    examples = read_init_train_train_examples()
-    print(len(examples))
+    split_init_train_data()

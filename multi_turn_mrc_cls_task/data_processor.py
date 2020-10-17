@@ -8,7 +8,6 @@ import collections
 import tensorflow as tf
 from tokenizers import BertWordPieceTokenizer
 from common_data_utils import get_squad_json_template
-from common_data_utils import get_squad_json_paragraph_template
 from common_data_utils import extract_relations_from_init_train_table
 from sklearn.metrics import precision_recall_fscore_support
 
@@ -28,11 +27,11 @@ def convert_init_train_to_squad_format(init_train_path, save_path):
     for init_train_example in init_train_examples:
         text = init_train_example['text']
         sros = init_train_example['sros']
-        squad_json_paragraph = get_squad_json_paragraph_template(
-            text=text,
-            origin_sros=sros,
-            pred_sros=[]
-        )
+        squad_json_paragraph = {
+            'text': text,
+            'origin_sros': sros,
+            'pred_sros': []
+        }
         squad_json['data'][0]['paragraphs'].append(squad_json_paragraph)
 
     with tf.io.gfile.GFile(save_path, mode='w') as writer:
@@ -486,15 +485,14 @@ if __name__ == '__main__':
 
     # 处理训练数据的推断结果
     # postprocess_results(
-    #     raw_data_path='datasets/raw/init-train-train-squad-format.json',
-    #     features_path='datasets/features/origin/train_features.pkl',
-    #     results_path='inference_results/origin/raw/train_results.json',
-    #     save_path='inference_results/origin/postprocessed/train_results.json'
+    #     raw_data_path='datasets/version_1/inference/valid.json',
+    #     results_path='inference_results/version_1/raw/valid_results.json',
+    #     save_path='inference_results/version_1/postprocessed/valid_results.json'
     # )
 
     # 训练集 PRF
     compute_prf(
-        post_results_path='inference_results/version_1/postprocessed/train_results.json'
+        post_results_path='inference_results/version_1/postprocessed/valid_results.json'
     )
 
     pass
