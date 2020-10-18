@@ -203,16 +203,6 @@ class BiCLSTask:
                 )
             )
 
-        callbacks.append(
-            tf.keras.callbacks.ReduceLROnPlateau(
-                monitor='val_loss',
-                factor=0.1,
-                patience=2,
-                min_delta=0.01,
-                min_lr=0
-            )
-        )
-
         return callbacks
 
     def predict_tfrecord(self, inference_model_dir, tfrecord_path, save_path):
