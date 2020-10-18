@@ -24,7 +24,7 @@ def create_model(is_train=True, use_pretrain=False):
             'token_type_ids': segment_ids
         },
         training=is_train,
-        reutrn_dict=True
+        return_dict=True
     )
 
     pooled_output = bert_output['pooler_output']
