@@ -207,7 +207,7 @@ class BiCLSTask:
             tf.keras.callbacks.ReduceLROnPlateau(
                 monitor='val_loss',
                 factor=0.1,
-                patience=3,
+                patience=2,
                 min_delta=0.01,
                 min_lr=0
             )
