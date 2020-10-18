@@ -361,15 +361,15 @@ def postprocess_results(
 
 
 if __name__ == '__main__':
-    generate_tfrecord_from_json_file(
-        input_file_path='datasets/version_3/inference/valid.json',
-        vocab_file_path='../bert-base-chinese/vocab.txt',
-        tfrecord_save_path='datasets/version_3/inference/tfrecords/valid.tfrecord',
-        meta_save_path='datasets/version_3/inference/meta/valid_meta.json',
-        features_save_path='datasets/version_3/inference/features/valid_features.pkl',
-        max_seq_len=200,
-        is_train=False
-    )
+    # generate_tfrecord_from_json_file(
+    #     input_file_path='datasets/version_3/inference/valid.json',
+    #     vocab_file_path='../bert-base-chinese/vocab.txt',
+    #     tfrecord_save_path='datasets/version_3/inference/tfrecords/valid.tfrecord',
+    #     meta_save_path='datasets/version_3/inference/meta/valid_meta.json',
+    #     features_save_path='datasets/version_3/inference/features/valid_features.pkl',
+    #     max_seq_len=200,
+    #     is_train=False
+    # )
 
     # convert_last_step_results_for_train(
     #     results_path='../naive_mrc_task/inference_results/version_3/last_version_1/second/postprocessed/valid_results.json',
@@ -387,11 +387,11 @@ if __name__ == '__main__':
     #     save_path='datasets/from_last_version_2/raw/for_valid/valid.json'
     # )
 
-    # postprocess_results(
-    #     raw_data_path='datasets/from_last_version_1/raw/inference/valid.json',
-    #     features_path='datasets/from_last_version_1/features/inference/valid_features.pkl',
-    #     results_path='inference_results/last_version_1/raw/valid_results.json',
-    #     save_path='inference_results/last_version_1/postprocessed/valid_results.json'
-    # )
+    postprocess_results(
+        raw_data_path='datasets/version_3/inference/valid.json',
+        features_path='datasets/version_3/inference/features/valid_features.pkl',
+        results_path='inference_results/version_3/raw/valid_results.json',
+        save_path='inference_results/version_3/postprocessed/valid_results.json'
+    )
 
     pass

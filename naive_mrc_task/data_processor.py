@@ -264,7 +264,7 @@ def convert_last_step_results_for_train(results_path, save_path):
                     'answer_start': s_start_pos
                 }],
                 'is_impossible': False,
-                'qas_id': 'id_' + str(qas_id)
+                'id': 'id_' + str(qas_id)
             }
             qas_id += 1
             paragraphs[paragraph_index]['qas'].append(squad_json_qas_item)
@@ -277,7 +277,7 @@ def convert_last_step_results_for_train(results_path, save_path):
                     'answer_start': o_start_pos
                 }],
                 'is_impossible': False,
-                'qas_id': 'id_' + str(qas_id)
+                'id': 'id_' + str(qas_id)
             }
             qas_id += 1
             paragraphs[paragraph_index]['qas'].append(squad_json_qas_item)
@@ -297,7 +297,7 @@ def convert_last_step_results_for_train(results_path, save_path):
                 'question': question_a,
                 'answers': [],
                 'is_impossible': True,
-                'qas_id': 'id_' + str(qas_id)
+                'id': 'id_' + str(qas_id)
             }
             qas_id += 1
             paragraphs[paragraph_index]['qas'].append(squad_json_qas_item)
@@ -1308,8 +1308,8 @@ if __name__ == '__main__':
     # )
 
     # convert_last_step_results_for_train(
-    #     '../multi_turn_mrc_cls_task/inference_results/version_1/',
-    #     'datasets/raw/train/origin/second/from_first_step/use_version_2/valid.json',
+    #     '../multi_turn_mrc_cls_task/inference_results/version_1/postprocessed/train_results.json',
+    #     'datasets/version_4/train/train.json',
     # )
 
     # convert_last_step_results_for_infer(
@@ -1318,31 +1318,31 @@ if __name__ == '__main__':
     #     step='2'
     # )
 
-    # generate_tfrecord_from_json_file(
-    #     input_file_path='datasets/version_3/inference/last_version_1/second/train.json',
-    #     vocab_file_path='../bert-base-chinese/vocab.txt',
-    #     tfrecord_save_path='datasets/version_3/inference/last_version_1/second/tfrecords/train.tfrecord',
-    #     meta_save_path='datasets/version_3/inference/last_version_1/second/meta/train_meta.json',
-    #     features_save_path='datasets/version_3/inference/last_version_1/second/features/train_features.pkl',
-    #     max_seq_len=200,
-    #     max_query_len=50,
-    #     doc_stride=128,
-    #     is_train=False,
-    #     version_2_with_negative=False
-    # )
+    generate_tfrecord_from_json_file(
+        input_file_path='datasets/version_4/train/valid.json',
+        vocab_file_path='../bert-base-chinese/vocab.txt',
+        tfrecord_save_path='datasets/version_4/train/tfrecords/valid.tfrecord',
+        meta_save_path='datasets/version_4/train/meta/valid_meta.json',
+        features_save_path='datasets/version_4/train/features/valid_features.pkl',
+        max_seq_len=200,
+        max_query_len=50,
+        doc_stride=128,
+        is_train=True,
+        version_2_with_negative=True
+    )
 
     # 推断第一步
-    postprocess_results(
-        raw_data_path='datasets/version_3/inference/last_version_1/second/valid.json',
-        features_path='datasets/version_3/inference/last_version_1/second/features/valid_features.pkl',
-        results_path='inference_results/version_3/last_version_1/second/raw/valid_results.json',
-        save_dir='inference_results/version_3/last_version_1/second/postprocessed',
-        prefix='valid_',
-        n_best_size=20,
-        max_answer_length=10,
-        do_lower_case=True,
-        step='second',
-        version_2_with_negative=False
-    )
+    # postprocess_results(
+    #     raw_data_path='datasets/version_3/inference/last_version_1/second/valid.json',
+    #     features_path='datasets/version_3/inference/last_version_1/second/features/valid_features.pkl',
+    #     results_path='inference_results/version_3/last_version_1/second/raw/valid_results.json',
+    #     save_dir='inference_results/version_3/last_version_1/second/postprocessed',
+    #     prefix='valid_',
+    #     n_best_size=20,
+    #     max_answer_length=10,
+    #     do_lower_case=True,
+    #     step='second',
+    #     version_2_with_negative=False
+    # )
 
     pass

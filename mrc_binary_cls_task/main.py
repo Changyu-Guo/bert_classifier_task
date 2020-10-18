@@ -329,10 +329,10 @@ def main():
 if __name__ == '__main__':
     task = main()
 
-    task.train()
+    # task.train()
 
-    # task.predict_tfrecord(
-    #     inference_model_dir='saved_models/version_1',
-    #     tfrecord_path='datasets/from_last_version_1/tfrecords/for_infer/valid.tfrecord',
-    #     save_path='inference_results/version_1/raw/valid_results.json'
-    # )
+    task.predict_tfrecord(
+        inference_model_dir='saved_models/version_3/',
+        tfrecord_path='datasets/version_3/inference/tfrecords/valid.tfrecord',
+        save_path='inference_results/version_3/raw/valid_results.json'
+    )
