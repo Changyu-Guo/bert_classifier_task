@@ -3,7 +3,7 @@
 import json
 from collections import Counter
 
-INFERENCE_RESULT_PATH = 'inference_results/version_1/origin/first_and_second/postprocessed/valid_results.json'
+INFERENCE_RESULT_PATH = 'inference_results/version_3/last_version_1/second/postprocessed/valid_results.json'
 
 with open(INFERENCE_RESULT_PATH, mode='r', encoding='utf-8') as reader:
     results = json.load(reader)

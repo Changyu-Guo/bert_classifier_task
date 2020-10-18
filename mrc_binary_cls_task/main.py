@@ -23,16 +23,19 @@ class BiCLSTask:
     def __init__(
             self,
             kwargs,
-            use_pretrain=None,
+            use_net_pretrain=None,
             batch_size=None,
     ):
 
         # param check
-        if use_pretrain is None:
+        if use_net_pretrain is None:
             raise ValueError('Param use_pretrain must be passed')
 
+        if not use_net_pretrain:
+            os.environ['CUDA_VISIBLE_DEVICES'] = '1'
+
         self.batch_size = batch_size
-        self.use_pretrain = use_pretrain
+        self.use_pretrain = use_net_pretrain
 
         self.task_name = kwargs['task_name']
 
@@ -77,8 +80,12 @@ class BiCLSTask:
         reader.close()
 
         train_data_size = self.train_meta_data['data_size']
+
         # for train
-        self.steps_per_epoch = int(train_data_size // self.batch_size) + 1
+        self.steps_per_epoch = int(train_data_size // self.batch_size)
+        if train_data_size % self.batch_size != 0:
+            self.steps_per_epoch += 1
+
         # for warmup
         self.total_train_steps = self.steps_per_epoch * self.epochs
 
@@ -141,8 +148,6 @@ class BiCLSTask:
 
         callbacks = self._create_callbacks()
 
-        print(model.evaluate(valid_dataset, verbose=0, return_dict=True))
-
         model.fit(
             train_dataset,
             epochs=self.epochs,
@@ -154,8 +159,6 @@ class BiCLSTask:
 
         # 保存最后一个 epoch 的模型
         checkpoint.save(self.model_save_dir)
-
-        print(model.evaluate(valid_dataset, verbose=0, return_dict=True))
 
     def _create_optimizer(self):
         return create_optimizer(
@@ -174,6 +177,7 @@ class BiCLSTask:
                 3. earlyStopping (重要)
         """
         callbacks = []
+
         if self.enable_checkpointing:
             ckpt_path = os.path.join(self.model_save_dir, 'ckpt-{epoch:02d}.ckpt')
             # 只保留在 valid dataset 上表现最好的结果
@@ -193,7 +197,8 @@ class BiCLSTask:
         if self.enable_early_stopping:
             callbacks.append(
                 tf.keras.callbacks.EarlyStopping(
-                    patience=2,
+                    monitor='val_acc',
+                    patience=6,
                     restore_best_weights=True
                 )
             )
@@ -260,22 +265,22 @@ class BiCLSTask:
 # task
 TASK_NAME = 'mrc_binary_cls_task'
 
-TRAIN_TFRECORD_FILE_PATH = 'datasets/version_1/train/tfrecords/train.tfrecord'
-VALID_TFRECORD_FILE_PATH = 'datasets/version_1/train/tfrecords/valid.tfrecord'
+TRAIN_TFRECORD_FILE_PATH = 'datasets/version_3/train/tfrecords/train.tfrecord'
+VALID_TFRECORD_FILE_PATH = 'datasets/version_3/train/tfrecords/valid.tfrecord'
 
 # tfrecord meta data
-TRAIN_TFRECORD_META_PATH = 'datasets/version_1/train/meta/train_meta.json'
-VALID_TFRECORD_META_PATH = 'datasets/version_1/train/meta/valid_meta.json'
+TRAIN_TFRECORD_META_PATH = 'datasets/version_3/train/meta/train_meta.json'
+VALID_TFRECORD_META_PATH = 'datasets/version_3/train/meta/valid_meta.json'
 
 # save relate
-MODEL_SAVE_DIR = 'saved_models/mrc_binary_cls_model'
-TENSORBOARD_LOG_DIR = 'logs'
+MODEL_SAVE_DIR = 'saved_models/version_3/mrc_binary_cls_model.ckpt'
+TENSORBOARD_LOG_DIR = 'logs/version_3'
 
 # tokenize
-VOCAB_FILE_PATH = '../vocabs/bert-base-chinese-vocab.txt'
+VOCAB_FILE_PATH = '../bert-base-chinese/vocab.txt'
 
 # dataset process relate
-MAX_SEQ_LEN = 165
+MAX_SEQ_LEN = 200
 PREDICT_BATCH_SIZE = 500
 PREDICT_THRESHOLD = 0.5
 
@@ -297,10 +302,10 @@ def get_model_params():
         vocab_file_path=VOCAB_FILE_PATH,
         max_seq_len=MAX_SEQ_LEN,
         init_lr=LEARNING_RATE,
-        end_lr=0.0,
+        end_lr=1e-7,
         warmup_steps_ratio=0.1,
         enable_checkpointing=False,  # Notice 开启此选项可能会存储大量的 Checkpoint ####
-        enable_tensorboard=False,
+        enable_tensorboard=True,
         enable_early_stopping=True,
         tensorboard_log_dir=TENSORBOARD_LOG_DIR,
         predict_threshold=PREDICT_THRESHOLD
@@ -315,8 +320,8 @@ def main():
     logging.set_verbosity(logging.INFO)
     task = BiCLSTask(
         get_model_params(),
-        use_pretrain=True,
-        batch_size=48,
+        use_net_pretrain=True,
+        batch_size=40,
     )
     return task
 
@@ -329,5 +334,5 @@ if __name__ == '__main__':
     # task.predict_tfrecord(
     #     inference_model_dir='saved_models/version_1',
     #     tfrecord_path='datasets/from_last_version_1/tfrecords/for_infer/valid.tfrecord',
-    #     save_path='infer_results/version_1/raw/valid_results.json'
+    #     save_path='inference_results/version_1/raw/valid_results.json'
     # )

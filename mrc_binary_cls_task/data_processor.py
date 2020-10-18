@@ -11,7 +11,74 @@ from common_data_utils import extract_examples_dict_from_relation_questions
 
 
 def convert_last_step_results_for_train(results_path, save_path):
-    pass
+    relation_questions_dict = extract_examples_dict_from_relation_questions(
+        init_train_table_path='../common-datasets/init-train-table.txt',
+        relation_questions_path='../common-datasets/relation_questions.txt'
+    )
+
+    # 加载上一步骤的推断结果
+    with tf.io.gfile.GFile(results_path, mode='r') as reader:
+        results = json.load(reader)
+    reader.close()
+
+    paragraphs = results['data'][0]['paragraphs']
+
+    qas_id = 0
+    for paragraph_index, paragraph in enumerate(paragraphs):
+
+        paragraphs[paragraph_index]['qas'] = []
+
+        context = paragraph['context']
+
+        origin_sros = paragraph['origin_sros']
+        origin_relations = set([sro['relation'] for sro in origin_sros])
+
+        pred_sros = paragraph['pred_sros']
+
+        for index, sro in enumerate(origin_sros):
+            s = sro['subject']
+            r = sro['relation']
+            o = sro['object']
+
+            relation_questions = relation_questions_dict[r]
+            question_c = relation_questions.question_c
+            question_c = question_c.replace('subject', s).replace('object', o)
+
+            squad_json_qas_item = {
+                'question': question_c,
+                'context': context,
+                'is_valid': 1,
+                'qas_id': 'id_' + str(qas_id)
+            }
+            qas_id += 1
+            paragraphs[paragraph_index]['qas'].append(squad_json_qas_item)
+
+        for index, sro in enumerate(pred_sros):
+            r = sro['relation']
+
+            if r in origin_relations:
+                continue
+
+            s = sro['subject']
+            o = sro['object']
+
+            relation_questions = relation_questions_dict[r]
+            question_c = relation_questions.question_c
+            question_c = question_c.replace('subject', s).replace('object', o)
+
+            squad_json_qas_item = {
+                'question': question_c,
+                'context': context,
+                'is_valid': 0,
+                'qas_id': 'id_' + str(qas_id)
+            }
+            qas_id += 1
+            paragraphs[paragraph_index]['qas'].append(squad_json_qas_item)
+
+    results['data'][0]['paragraphs'] = paragraphs
+    with tf.io.gfile.GFile(save_path, mode='w') as writer:
+        writer.write(json.dumps(results, ensure_ascii=False, indent=2) + '\n')
+    writer.close()
 
 
 def convert_last_step_results_for_valid(results_path, save_path):
@@ -231,85 +298,36 @@ class FeatureWriter:
         self._writer.close()
 
 
-def read_examples_from_last_step_results(last_step_result_path, is_training):
-    relation_questions_dict = extract_examples_dict_from_relation_questions(
-        init_train_table_path='../common-datasets/init-train-table.txt',
-        relation_questions_path='../common-datasets/relation_questions.txt'
-    )
-    with tf.io.gfile.GFile(last_step_result_path, mode='r') as reader:
-        results = json.load(reader)
+def read_bi_cls_examples(filepath, is_training):
+    with tf.io.gfile.GFile(filepath, mode='r') as reader:
+        data = json.load(reader)
     reader.close()
 
     examples = []
-    paragraphs = results['data'][0]['paragraphs']
+    paragraphs = data['data'][0]['paragraphs']
 
     for paragraph_index, paragraph in enumerate(paragraphs):
-        context = paragraph['context']
-        origin_sros = paragraph['origin_sros']
-        pred_sros = paragraph['pred_sros']
-        origin_relations = []
 
-        # 训练包含正样本和负样本
-        if is_training:
+        for qa in paragraph['qas']:
+            text = qa['context']
+            question = qa['question']
+            is_valid = None
+            sro_index = None
 
-            # 构造正样本
-            for sro_index, sro in enumerate(origin_sros):
-                r = sro['relation']
-                s = sro['subject']
-                o = sro['object']
-                origin_relations.append(r)
+            if is_training:
+                is_valid = qa['is_valid']
+            else:
+                sro_index = qa['sro_index']
 
-                relation_questions = relation_questions_dict[r]
-                question_c = relation_questions.question_c
-                question_c = question_c.replace('subject', s).replace('object', o)
+            example = BiCLSExample(
+                paragraph_index=paragraph_index,
+                sro_index=sro_index,
+                text=text,
+                question=question,
+                is_valid=is_valid
+            )
 
-                example = BiCLSExample(
-                    paragraph_index=paragraph_index,
-                    sro_index=sro_index,
-                    text=context,
-                    question=question_c,
-                    is_valid=1
-                )
-                examples.append(example)
-
-            # 构造负样本
-            for sro_index, sro in enumerate(pred_sros):
-
-                s = sro['subject']
-                r = sro['relation']
-                o = sro['object']
-
-                # 如果当前样本预测正确，则不构造当前样本为负样本
-                if r in origin_relations:
-                    continue
-
-                relation_questions = relation_questions_dict[r]
-                question_c = relation_questions.question_c
-                question_c = question_c.replace('subject', s).replace('object', o)
-
-                example = BiCLSExample(
-                    paragraph_index=paragraph_index,
-                    sro_index=sro_index,
-                    text=context,
-                    question=question_c,
-                    is_valid=0
-                )
-                examples.append(example)
-
-        # 推断只需要根据构造问题
-        else:
-            qas = paragraph['qas']
-            for qa in qas:
-                example = BiCLSExample(
-                    paragraph_index=paragraph_index,
-                    sro_index=qa['sro_index'],
-                    text=context,
-                    question=qa['question'],
-                    is_valid=None
-                )
-                examples.append(example)
-
-    print(len(examples))
+            examples.append(example)
 
     return examples
 
@@ -353,7 +371,7 @@ def generate_tfrecord_from_json_file(
         max_seq_len=128,
         is_train=True
 ):
-    examples = read_examples_from_last_step_results(input_file_path, is_training=is_train)
+    examples = read_bi_cls_examples(input_file_path, is_training=is_train)
     writer = FeatureWriter(filename=tfrecord_save_path, is_training=is_train)
 
     features = []
@@ -400,8 +418,8 @@ def postprocess_results(
     for i in range(len(new_paragraphs)):
         new_paragraphs[i]['pred_sros'] = []
 
-    examples = read_examples_from_last_step_results(
-        last_step_result_path=raw_data_path,
+    examples = read_bi_cls_examples(
+        filepath=raw_data_path,
         is_training=False
     )
 
@@ -446,24 +464,29 @@ def postprocess_results(
 
 
 if __name__ == '__main__':
-    generate_tfrecord_from_json_file(
-        input_file_path='datasets/version_1/train/valid_results_old.json',
-        vocab_file_path='../vocabs/bert-base-chinese-vocab.txt',
-        tfrecord_save_path='datasets/version_1/train/tfrecords/valid.tfrecord',
-        meta_save_path='datasets/version_1/train/meta/valid_meta.json',
-        features_save_path='datasets/version_1/train/features/valid_features.pkl',
-        max_seq_len=165,
-        is_train=True
-    )
+    # generate_tfrecord_from_json_file(
+    #     input_file_path='datasets/version_3/train/valid.json',
+    #     vocab_file_path='../bert-base-chinese/vocab.txt',
+    #     tfrecord_save_path='datasets/version_3/train/tfrecords/valid.tfrecord',
+    #     meta_save_path='datasets/version_3/train/meta/valid_meta.json',
+    #     features_save_path='datasets/version_3/train/features/valid_features.pkl',
+    #     max_seq_len=200,
+    #     is_train=True
+    # )
+
+    # convert_last_step_results_for_train(
+    #     results_path='../naive_mrc_task/inference_results/version_3/last_version_1/second/postprocessed/valid_results.json',
+    #     save_path='datasets/version_3/train/valid.json'
+    # )
 
     # convert_last_step_results_for_infer(
-    #     results_path='../naive_mrc_task/inference_results/last_task/use_version_1/second_step/postprocessed/valid_results'
+    #     results_path='../naive_mrc_task/inference_results/last_task/use_version_1/second/postprocessed/valid_results'
     #                  '.json',
     #     save_path='datasets/from_last_version_1/raw/valid.json'
     # )
 
     # convert_last_step_results_for_valid(
-    #     results_path='../naive_mrc_task/inference_results/last_task/use_version_2/second_step/postprocessed/'
+    #     results_path='../naive_mrc_task/inference_results/last_task/use_version_2/second/postprocessed/'
     #                  'valid_results.json',
     #     save_path='datasets/from_last_version_2/raw/for_valid/valid.json'
     # )

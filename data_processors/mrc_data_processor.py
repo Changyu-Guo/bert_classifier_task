@@ -33,16 +33,16 @@ train_data_before_first_step_save_path = 'common-datasets/preprocessed_datasets/
 valid_data_before_first_step_save_path = 'common-datasets/preprocessed_datasets/first_step_valid.json'
 
 # first step inference inference_results
-first_step_inference_train_save_path = 'inference_results/mrc_results/in_use/first_step/train_results.json'
-first_step_inference_valid_save_path = 'inference_results/mrc_results/in_use/first_step/valid_results.json'
+first_step_inference_train_save_path = 'inference_results/mrc_results/in_use/first/train_results.json'
+first_step_inference_valid_save_path = 'inference_results/mrc_results/in_use/first/valid_results.json'
 
 # second step json file
 second_step_train_save_path = 'common-datasets/preprocessed_datasets/second_step_train.json'
 second_step_valid_save_path = 'common-datasets/preprocessed_datasets/second_step_valid.json'
 
 # second step inference inference_results
-second_step_inference_train_save_path = 'inference_results/mrc_results/in_use/second_step/train_results.json'
-second_step_inference_valid_save_path = 'inference_results/mrc_results/in_use/second_step/valid_results.json'
+second_step_inference_train_save_path = 'inference_results/mrc_results/in_use/second/train_results.json'
+second_step_inference_valid_save_path = 'inference_results/mrc_results/in_use/second/valid_results.json'
 
 
 def convert_init_train_examples_to_squad_json_format(output_save_path, is_train=True):

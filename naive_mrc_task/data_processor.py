@@ -1309,21 +1309,21 @@ if __name__ == '__main__':
 
     # convert_last_step_results_for_train(
     #     '../multi_turn_mrc_cls_task/inference_results/version_1/',
-    #     'datasets/raw/train/origin/second_step/from_first_step/use_version_2/valid.json',
+    #     'datasets/raw/train/origin/second/from_first_step/use_version_2/valid.json',
     # )
 
     # convert_last_step_results_for_infer(
-    #     results_path='../multi_turn_mrc_cls_task/inference_results/version_1/postprocessed/valid_results.json',
-    #     save_path='datasets/version_3/inference/last_version_1/first/valid.json',
-    #     step='1'
+    #     results_path='inference_results/version_3/last_version_1/first/postprocessed/train_results.json',
+    #     save_path='datasets/version_3/inference/last_version_1/second/train.json',
+    #     step='2'
     # )
 
     # generate_tfrecord_from_json_file(
-    #     input_file_path='datasets/version_3/inference/last_version_1/first/valid.json',
+    #     input_file_path='datasets/version_3/inference/last_version_1/second/train.json',
     #     vocab_file_path='../bert-base-chinese/vocab.txt',
-    #     tfrecord_save_path='datasets/version_3/inference/last_version_1/first/tfrecords/valid.tfrecord',
-    #     meta_save_path='datasets/version_3/inference/last_version_1/first/meta/valid_meta.json',
-    #     features_save_path='datasets/version_3/inference/last_version_1/first/features/valid_features.pkl',
+    #     tfrecord_save_path='datasets/version_3/inference/last_version_1/second/tfrecords/train.tfrecord',
+    #     meta_save_path='datasets/version_3/inference/last_version_1/second/meta/train_meta.json',
+    #     features_save_path='datasets/version_3/inference/last_version_1/second/features/train_features.pkl',
     #     max_seq_len=200,
     #     max_query_len=50,
     #     doc_stride=128,
@@ -1333,15 +1333,15 @@ if __name__ == '__main__':
 
     # 推断第一步
     postprocess_results(
-        raw_data_path='datasets/version_3/inference/origin/first_and_second/valid.json',
-        features_path='datasets/version_3/inference/origin/first_and_second/features/valid_features.pkl',
-        results_path='inference_results/version_3/origin/first_and_second/raw/valid_results.json',
-        save_dir='inference_results/version_3/origin/first_and_second/postprocessed',
+        raw_data_path='datasets/version_3/inference/last_version_1/second/valid.json',
+        features_path='datasets/version_3/inference/last_version_1/second/features/valid_features.pkl',
+        results_path='inference_results/version_3/last_version_1/second/raw/valid_results.json',
+        save_dir='inference_results/version_3/last_version_1/second/postprocessed',
         prefix='valid_',
         n_best_size=20,
         max_answer_length=10,
         do_lower_case=True,
-        step='first_and_second',
+        step='second',
         version_2_with_negative=False
     )
 

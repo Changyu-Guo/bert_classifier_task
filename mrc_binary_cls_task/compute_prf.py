@@ -94,5 +94,5 @@ def compute_prf_without_step_3(path):
 
 if __name__ == '__main__':
     # compute_prf_without_step_3('datasets/from_last_version_1/raw/valid.json')
-    compute_prf_without_step_3('infer_results/version_1/postprocessed/valid_results.json')
+    compute_prf_without_step_3('inference_results/version_1/postprocessed/valid_results.json')
     pass

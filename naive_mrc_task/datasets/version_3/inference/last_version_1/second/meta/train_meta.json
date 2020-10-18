@@ -1,0 +1,8 @@
+{
+  "data_size": 29267,
+  "max_seq_len": 200,
+  "max_query_len": 50,
+  "doc_stride": 128,
+  "is_train": false,
+  "version_2_with_negative": false
+}
