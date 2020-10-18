@@ -302,7 +302,7 @@ def get_model_params():
     return dict(
         task_name=TASK_NAME,
         distribution_strategy='one_device',
-        epochs=20,
+        epochs=100,
         predict_batch_size=PREDICT_BATCH_SIZE,
         model_save_dir=MODEL_SAVE_DIR,
         train_tfrecord_file_path=TRAIN_TFRECORD_FILE_PATH,
