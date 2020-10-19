@@ -20,7 +20,7 @@ def create_model(is_train=True, use_net_pretrain=False):
         bert_config = BertConfig.from_json_file('../bert-base-chinese/bert_config.json')
         core_bert = TFBertModel(bert_config)
         checkpoint = tf.train.Checkpoint(model=core_bert)
-        checkpoint.restore('bert_model.ckpt').assert_consumed()
+        checkpoint.restore('../bert-base-chinese/bert_model.ckpt').assert_consumed()
 
     bert_output = core_bert(
         inputs={

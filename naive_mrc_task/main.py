@@ -272,15 +272,15 @@ class MRCTask:
 TASK_NAME = 'mrc'
 
 # TFRecord
-TRAIN_TFRECORD_FILE_PATH = 'datasets/version_4/train/tfrecords/train.tfrecord'
-VALID_TFRECORD_FILE_PATH = 'datasets/version_4/train/tfrecords/valid.tfrecord'
+TRAIN_TFRECORD_FILE_PATH = 'datasets/version_5/train/first/tfrecords/train.tfrecord'
+VALID_TFRECORD_FILE_PATH = 'datasets/version_5/train/first/tfrecords/valid.tfrecord'
 
 # tfrecord meta data
-TRAIN_TFRECORD_META_PATH = 'datasets/version_4/train/meta/train_meta.json'
-VALID_TFRECORD_META_PATH = 'datasets/version_4/train/meta/valid_meta.json'
+TRAIN_TFRECORD_META_PATH = 'datasets/version_5/train/first/meta/train_meta.json'
+VALID_TFRECORD_META_PATH = 'datasets/version_5/train/first/meta/valid_meta.json'
 
-MODEL_SAVE_DIR = 'saved_models/version_4/naive_mrc.ckpt'
-TENSORBOARD_LOG_DIR = 'logs/version_4'
+MODEL_SAVE_DIR = 'saved_models/version_5/first/naive_mrc.ckpt'
+TENSORBOARD_LOG_DIR = 'logs/version_5'
 
 # dataset process relate
 MAX_SEQ_LEN = 200
@@ -330,9 +330,9 @@ if __name__ == '__main__':
     task = main()
 
     # task.predict_tfrecord(
-    #     inference_model_dir='saved_models/version_3/',
-    #     tfrecord_path='datasets/version_3/inference/last_version_1/second/tfrecords/valid.tfrecord',
-    #     save_path='inference_results/version_3/last_version_1/second/raw/valid_results.json'
+    #     inference_model_dir='saved_models/version_4/',
+    #     tfrecord_path='datasets/version_4/inference/last_version_1/second/tfrecords/valid.tfrecord',
+    #     save_path='inference_results/version_4/last_version_1/second/raw/valid_results.json'
     # )
 
     task.train()

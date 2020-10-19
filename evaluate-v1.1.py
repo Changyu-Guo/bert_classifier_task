@@ -77,7 +77,7 @@ def evaluate(dataset, predictions):
 
 
 if __name__ == '__main__':
-    dataset_file = 'naive_mrc_task/datasets/version_3/inference/origin/second/valid.json'
+    dataset_file = 'naive_mrc_task/inference_results/version_4/last_version_1/second/'
     prediction_file = 'naive_mrc_task/inference_results/version_3/origin/' \
                       'second/postprocessed/valid_all_predictions.json'
     with open(dataset_file, encoding='utf-8') as dataset_file:
